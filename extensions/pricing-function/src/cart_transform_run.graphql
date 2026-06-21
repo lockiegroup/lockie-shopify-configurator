@@ -3,6 +3,17 @@ query CartTransformRunInput {
     lines {
       id
       quantity
+      specialNumbering: attribute(key: "_special_numbering") { value }
+      specials: attribute(key: "_specials") { value }
+      holyDaysCount: attribute(key: "_holydays_count") { value }
+      merchandise {
+        ... on ProductVariant {
+          product {
+            priceTable: metafield(namespace: "custom", key: "price_table") { jsonValue }
+            addonFees: metafield(namespace: "custom", key: "addon_fees") { jsonValue }
+          }
+        }
+      }
     }
   }
 }
