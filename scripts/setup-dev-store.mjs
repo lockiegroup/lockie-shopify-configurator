@@ -140,12 +140,11 @@ function execute(query, variables = {}, isMutation = false) {
     parsed = JSON.parse(m[0]);
   }
 
-  // Normalise: CLI may return { data } directly or wrap in { result: { data } }.
-  const result = parsed.result ?? parsed;
-  if (result.errors?.length) {
-    throw new Error(`GraphQL errors:\n${JSON.stringify(result.errors, null, 2)}`);
+  // shopify store execute --json returns the data payload directly (no { data: } envelope).
+  if (parsed.errors?.length) {
+    throw new Error(`GraphQL errors:\n${JSON.stringify(parsed.errors, null, 2)}`);
   }
-  return result.data;
+  return parsed;
 }
 
 // ── Static data ───────────────────────────────────────────────────────────────
