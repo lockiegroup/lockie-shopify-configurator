@@ -8,22 +8,37 @@
  * Idempotent: safe to re-run. Existing definitions, the product, and
  * existing metafield values are updated in place rather than duplicated.
  *
- * Prerequisites
- * ─────────────
- * 1. Copy .env.example → .env and fill in the two variables.
- * 2. node scripts/setup-dev-store.mjs
+ * Prerequisites (one-time)
+ * ────────────────────────
+ * 1. shopify app dev
+ *      Installs the app on the dev store and stores its credentials in the CLI.
+ *      Ctrl-C once it's running — you only need the install step, not the tunnel.
  *
- * Node 18+ required (uses built-in fetch).
+ * 2. shopify store auth \
+ *        --store <your-dev-store.myshopify.com> \
+ *        --scopes write_products
+ *      Stores an online access token for this store in the CLI session.
+ *      Re-run if you open a new terminal or the token expires.
+ *
+ * Usage
+ * ─────
+ * node scripts/setup-dev-store.mjs --store <your-dev-store.myshopify.com>
+ *
+ * The store domain can also be set via SHOPIFY_FLAG_STORE or
+ * SHOPIFY_STORE_DOMAIN in a .env file at the repo root.
  */
 
-import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
+import { execSync } from "child_process";
+import { readFileSync, writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
+import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
+const API_VERSION = "2026-07";
 
-// ── Env loading ───────────────────────────────────────────────────────────────
+// ── Store domain ──────────────────────────────────────────────────────────────
 
 function loadEnv() {
   try {
@@ -38,42 +53,99 @@ function loadEnv() {
       if (key && !(key in process.env)) process.env[key] = val;
     }
   } catch {
-    // No .env file — fall through to actual environment variables.
+    // No .env — rely on actual environment variables.
   }
 }
 
 loadEnv();
 
-const STORE = process.env.SHOPIFY_STORE_DOMAIN?.replace(/\/+$/, "");
-const TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN;
-const API_VERSION = "2026-07";
+const storeArg = process.argv.indexOf("--store");
+const STORE = (
+  (storeArg >= 0 ? process.argv[storeArg + 1] : null) ??
+  process.env.SHOPIFY_FLAG_STORE ??
+  process.env.SHOPIFY_STORE_DOMAIN
+)?.replace(/\/+$/, "");
 
-if (!STORE || !TOKEN) {
+if (!STORE) {
   console.error(
-    "\nMissing env vars. Copy .env.example → .env and fill in:\n" +
-    "  SHOPIFY_STORE_DOMAIN     e.g. your-dev-store.myshopify.com\n" +
-    "  SHOPIFY_ADMIN_API_TOKEN  from a custom app in the dev store admin\n"
+    "\nProvide your dev store domain:\n" +
+    "  node scripts/setup-dev-store.mjs --store your-dev-store.myshopify.com\n\n" +
+    "Or set SHOPIFY_FLAG_STORE in .env\n\n" +
+    "Prerequisites:\n" +
+    "  1. shopify app dev\n" +
+    "  2. shopify store auth --store <domain> --scopes write_products,write_metafields\n"
   );
   process.exit(1);
 }
 
-const GQL_URL = `https://${STORE}/admin/api/${API_VERSION}/graphql.json`;
-const AUTH_HEADERS = { "Content-Type": "application/json", "X-Shopify-Access-Token": TOKEN };
+// ── Temp file management ──────────────────────────────────────────────────────
 
-// ── HTTP helper ───────────────────────────────────────────────────────────────
+const tempFiles = [];
 
-async function gql(query, variables = {}) {
-  const res = await fetch(GQL_URL, {
-    method: "POST",
-    headers: AUTH_HEADERS,
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} from Shopify GraphQL: ${await res.text()}`);
+function tmpFile(suffix, content) {
+  const path = join(tmpdir(), `lockie-setup-${process.pid}-${Date.now()}-${suffix}`);
+  writeFileSync(path, content, "utf8");
+  tempFiles.push(path);
+  return path;
+}
+
+function cleanupTempFiles() {
+  for (const f of tempFiles) {
+    try { unlinkSync(f); } catch {}
   }
-  const { data, errors } = await res.json();
-  if (errors?.length) throw new Error(`GraphQL errors:\n${JSON.stringify(errors, null, 2)}`);
-  return data;
+}
+
+process.on("exit", cleanupTempFiles);
+process.on("SIGINT", () => { cleanupTempFiles(); process.exit(130); });
+
+// ── CLI execution ─────────────────────────────────────────────────────────────
+//
+// Writes query + variables to temp files (avoids all shell-escaping issues with
+// complex JSON values), then calls `shopify store execute --json` and parses stdout.
+
+function execute(query, variables = {}, isMutation = false) {
+  const parts = [
+    "shopify store execute",
+    `--store "${STORE}"`,
+    `--query-file "${tmpFile("query.graphql", query.trim())}"`,
+    `--version ${API_VERSION}`,
+    "--json",
+  ];
+
+  if (Object.keys(variables).length > 0) {
+    parts.push(`--variable-file "${tmpFile("vars.json", JSON.stringify(variables))}"`);
+  }
+
+  if (isMutation) parts.push("--allow-mutations");
+
+  let stdout;
+  try {
+    stdout = execSync(parts.join(" "), {
+      encoding: "utf8",
+      cwd: ROOT,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const detail = [err.stderr, err.stdout].filter(Boolean).join("\n").trim();
+    throw new Error(`shopify store execute failed:\n${detail}`);
+  }
+
+  // --json should give clean stdout; extract the outermost JSON object as a fallback.
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout.trim());
+  } catch {
+    const m = stdout.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error(`No JSON in CLI output:\n${stdout}`);
+    parsed = JSON.parse(m[0]);
+  }
+
+  // Normalise: CLI may return { data } directly or wrap in { result: { data } }.
+  const result = parsed.result ?? parsed;
+  if (result.errors?.length) {
+    throw new Error(`GraphQL errors:\n${JSON.stringify(result.errors, null, 2)}`);
+  }
+  return result.data;
 }
 
 // ── Static data ───────────────────────────────────────────────────────────────
@@ -83,10 +155,10 @@ const PRICE_TABLE = JSON.parse(
 );
 
 const ADDON_FEES = {
-  special_numbering: { label: "Special numbering",              amount: 12.00, type: "flat"             },
-  extra_envelope:    { label: "Additional special envelope",    amount:  0.05, type: "per_unit_per_set" },
-  printed_extra:     { label: "Printed additional envelope",    amount:  0.01, type: "per_unit_per_set" },
-  holyday_special:   { label: "Holyday special",                amount:  0.05, type: "per_unit_per_set" },
+  special_numbering: { label: "Special numbering",           amount: 12.00, type: "flat"             },
+  extra_envelope:    { label: "Additional special envelope", amount:  0.05, type: "per_unit_per_set" },
+  printed_extra:     { label: "Printed additional envelope", amount:  0.01, type: "per_unit_per_set" },
+  holyday_special:   { label: "Holyday special",             amount:  0.05, type: "per_unit_per_set" },
 };
 
 const CONFIG_WEEKLY = {
@@ -121,10 +193,10 @@ const CONFIG_WEEKLY = {
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────
 
-async function ensureMetafieldDefinitions() {
+function ensureMetafieldDefinitions() {
   console.log("\n── 1. Metafield definitions  (namespace: custom, owner: PRODUCT)");
 
-  const { metafieldDefinitions } = await gql(`{
+  const { metafieldDefinitions } = execute(`{
     metafieldDefinitions(namespace: "custom", ownerType: PRODUCT, first: 20) {
       nodes { key id }
     }
@@ -143,14 +215,15 @@ async function ensureMetafieldDefinitions() {
       continue;
     }
 
-    const data = await gql(
+    const data = execute(
       `mutation Create($def: MetafieldDefinitionInput!) {
         metafieldDefinitionCreate(definition: $def) {
           createdDefinition { id key }
           userErrors { field message code }
         }
       }`,
-      { def: { namespace: "custom", key, name, type: "json", ownerType: "PRODUCT" } }
+      { def: { namespace: "custom", key, name, type: "json", ownerType: "PRODUCT" } },
+      true
     );
 
     const { createdDefinition, userErrors } = data.metafieldDefinitionCreate;
@@ -161,28 +234,26 @@ async function ensureMetafieldDefinitions() {
 
 // ── Step 2: Weekly Boxed Sets product ─────────────────────────────────────────
 
-async function ensureProduct() {
+function ensureProduct() {
   console.log("\n── 2. Weekly Boxed Sets product");
 
-  const { products } = await gql(`{
+  const { products } = execute(`{
     products(first: 5, query: "title:'Weekly Boxed Sets'") {
       nodes { id title variants(first: 1) { nodes { id } } }
     }
   }`);
 
-  // Filter for exact title — Shopify's title query is a fuzzy search.
+  // Shopify's title query is a fuzzy search; filter for exact match.
   const match = products.nodes.find((p) => p.title === "Weekly Boxed Sets");
   if (match) {
-    const variantId = match.variants.nodes[0]?.id ?? "(no variant)";
     console.log(`   ✓  Product already exists`);
     console.log(`      Product GID : ${match.id}`);
-    console.log(`      Variant GID : ${variantId}`);
+    console.log(`      Variant GID : ${match.variants.nodes[0]?.id ?? "(none)"}`);
     return match.id;
   }
 
-  // productSet is the modern replacement for the deprecated productCreate.
-  // synchronous: true waits for completion before returning.
-  const data = await gql(
+  // productSet is the modern, idempotent replacement for productCreate.
+  const data = execute(
     `mutation ProductSet($input: ProductSetInput!) {
       productSet(synchronous: true, input: $input) {
         product { id title variants(first: 1) { nodes { id } } }
@@ -193,10 +264,10 @@ async function ensureProduct() {
       input: {
         title: "Weekly Boxed Sets",
         status: "DRAFT",
-        // Placeholder price — Cart Transform overwrites this at checkout.
-        variants: [{ price: "0.01" }],
+        variants: [{ price: "0.01" }], // Placeholder — Cart Transform overwrites at checkout.
       },
-    }
+    },
+    true
   );
 
   const { product, userErrors } = data.productSet;
@@ -210,30 +281,31 @@ async function ensureProduct() {
 
 // ── Step 3: Attach metafield values ──────────────────────────────────────────
 
-async function attachMetafields(productGid) {
+function attachMetafields(productGid) {
   console.log("\n── 3. Metafield values on Weekly Boxed Sets");
 
-  const metafields = [
-    { namespace: "custom", key: "price_table", type: "json", ownerId: productGid, value: JSON.stringify(PRICE_TABLE)   },
-    { namespace: "custom", key: "addon_fees",  type: "json", ownerId: productGid, value: JSON.stringify(ADDON_FEES)    },
-    { namespace: "custom", key: "config",      type: "json", ownerId: productGid, value: JSON.stringify(CONFIG_WEEKLY) },
-  ];
-
-  // metafieldsSet is the idempotent upsert mutation — creates or updates.
-  const data = await gql(
+  // metafieldsSet is an upsert — creates or updates, always idempotent.
+  const data = execute(
     `mutation Set($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
         metafields { namespace key value }
         userErrors { field message code }
       }
     }`,
-    { metafields }
+    {
+      metafields: [
+        { namespace: "custom", key: "price_table", type: "json", ownerId: productGid, value: JSON.stringify(PRICE_TABLE)   },
+        { namespace: "custom", key: "addon_fees",  type: "json", ownerId: productGid, value: JSON.stringify(ADDON_FEES)    },
+        { namespace: "custom", key: "config",      type: "json", ownerId: productGid, value: JSON.stringify(CONFIG_WEEKLY) },
+      ],
+    },
+    true
   );
 
-  const { metafields: set, userErrors } = data.metafieldsSet;
+  const { metafields, userErrors } = data.metafieldsSet;
   if (userErrors.length) throw new Error(`metafieldsSet: ${JSON.stringify(userErrors)}`);
 
-  for (const mf of set) {
+  for (const mf of metafields) {
     const preview = mf.value.length > 60 ? mf.value.slice(0, 57) + "…" : mf.value;
     console.log(`   ✓  ${mf.namespace}.${mf.key}  →  ${preview}`);
   }
@@ -241,15 +313,13 @@ async function attachMetafields(productGid) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-async function main() {
-  console.log(`\nConfiguring dev store: https://${STORE}`);
-  await ensureMetafieldDefinitions();
-  const productGid = await ensureProduct();
-  await attachMetafields(productGid);
+console.log(`\nConfiguring dev store: https://${STORE}`);
+try {
+  ensureMetafieldDefinitions();
+  const productGid = ensureProduct();
+  attachMetafields(productGid);
   console.log("\nAll done. Re-run at any time — the script is idempotent.\n");
-}
-
-main().catch((err) => {
+} catch (err) {
   console.error("\nSetup failed:", err.message);
   process.exit(1);
-});
+}
