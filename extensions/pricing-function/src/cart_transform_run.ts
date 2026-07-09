@@ -30,8 +30,14 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     // No price_table metafield = Tier 1 product; leave price untouched.
     if (!priceTable?.jsonValue) continue;
 
+    // The theme wizard is expected to add-to-cart with quantity fixed at 1 and
+    // carry the customer's actual box count via the _quantity property — see
+    // the note on `amount` below for why. Fall back to the cart line's native
+    // quantity if that property is absent (e.g. ad-hoc/manual testing).
+    const orderedQty = parseInt(line.orderedQuantity?.value ?? "", 10) || line.quantity;
+
     const lineTotal = computeLineTotal({
-      qty: line.quantity,
+      qty: orderedQty,
       priceTable: priceTable.jsonValue as PriceTable,
       addonFees: (addonFees?.jsonValue ?? {}) as AddonFees,
       specialNumbering: line.specialNumbering?.value === "yes",
@@ -49,11 +55,26 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     // as a single JSON-encoded `_config_json` attribute and passed through
     // opaquely here without the function needing to parse it.
     const attributes = collectAttributes([
+      line.orderedQuantity,
       line.specialNumbering,
       line.specials,
       line.holyDaysCount,
       line.configJson,
     ]);
+
+    // Checkout rounds fixedPricePerUnit to 2dp *before* multiplying by
+    // parent_qty × item_qty — confirmed live (qty 52 at "3.140769231"/unit
+    // charged as 52 × 3.14 = $163.28, four cents short of $163.32). Band unit
+    // rates need up to 9dp to reproduce exact totals, which no 2dp per-unit
+    // price can survive once multiplied by a quantity > 1. The only exact fix
+    // is to make that multiplier 1: expandedItem.quantity is already pinned at
+    // 1 (see below), so when the parent line's own quantity is also 1 (the
+    // wizard's job), the "per unit" amount can just be the full line total —
+    // no multiplication, no rounding drift. If line.quantity isn't 1 (legacy/
+    // ad-hoc testing), fall back to dividing by it, matching prior behaviour.
+    const amount = line.quantity === 1
+      ? lineTotal.toFixed(2)
+      : unitAmountForLineUpdate(lineTotal, line.quantity);
 
     operations.push({
       lineExpand: {
@@ -70,7 +91,7 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
             attributes,
             price: {
               adjustment: {
-                fixedPricePerUnit: { amount: unitAmountForLineUpdate(lineTotal, line.quantity) },
+                fixedPricePerUnit: { amount },
               },
             },
           },

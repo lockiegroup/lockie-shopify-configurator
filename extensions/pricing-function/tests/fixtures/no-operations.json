@@ -8,6 +8,7 @@
           {
             "id": "gid://shopify/CartLine/1",
             "quantity": 1,
+            "orderedQuantity": null,
             "specialNumbering": null,
             "specials": null,
             "holyDaysCount": null,

@@ -80,11 +80,21 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
   Shopify multiplies it by the parent cart line's own quantity. For a 1:1 price override
   (not a real multi-component bundle), this must be `1` — setting it to the parent line's
   quantity squares the final count (confirmed live: qty 52 → 2704 units charged at the
-  per-unit price). Keep the per-unit price as `lineTotal / line.quantity`; only the
-  `ExpandedItem.quantity` field is fixed at `1`.
+  per-unit price).
+- **The theme wizard MUST add-to-cart with `quantity: 1`, always.** The customer's real
+  box count travels as the `_quantity` line item property instead. Reason: checkout rounds
+  `fixedPricePerUnit` to 2dp *before* multiplying by `parent_qty × item_qty` — confirmed
+  live, qty 52 at unit price `3.140769231` charged as `52 × 3.14 = £163.28`, four pence
+  short of `£163.32`. Band unit rates need up to 9dp to reproduce exact totals, and no 2dp
+  per-unit price survives multiplication by a quantity > 1. The only exact fix is to make
+  that multiplier `1`: with `ExpandedItem.quantity` pinned at `1` and the parent cart
+  line's own quantity also `1`, the Function sets `fixedPricePerUnit.amount` to the full
+  `lineTotal` directly — no division, no rounding drift. If the wizard ever adds with
+  quantity > 1 (legacy/ad-hoc testing), the Function falls back to dividing by it, same
+  as before — valid but not cent-exact.
 - **Function input query complexity cap is 30.** Each individual `attribute(key:)`
   lookup costs 2, and `CartLine` has no bulk/plural attributes field — querying all
-  ~22 `_`-prefixed properties individually (53) exceeds the cap. Only
+  ~22 `_`-prefixed properties individually (53) exceeds the cap. Only `_quantity`,
   `_special_numbering`, `_specials`, and `_holydays_count` are queried/passed through
   individually; see the line item properties section below for how the rest are handled.
 - **One Cart Transform function per app.** This function must be the sole owner of
@@ -114,9 +124,14 @@ line_total   = round2(base_total + addons_total)
 
 ## Line item properties written on add-to-basket
 
+Add-to-cart is always `quantity: 1` (see Hard rules above — required for exact
+line totals). `_quantity` carries the customer's real box count and is what
+the Function and front-end must use for all pricing math instead of the
+native cart quantity.
+
 Kept as individual named properties (queried and pricing-relevant, and worth
-fulfilment seeing as their own columns): `_special_numbering`, `_specials`,
-`_holydays_count`.
+fulfilment seeing as their own columns): `_quantity`, `_special_numbering`,
+`_specials`, `_holydays_count`.
 
 Everything else is written as a single JSON-encoded `_config_json` property
 (the Cart Transform Function's input query complexity cap of 30 doesn't allow

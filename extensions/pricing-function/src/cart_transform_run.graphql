@@ -3,6 +3,7 @@ query CartTransformRunInput {
     lines {
       id
       quantity
+      orderedQuantity: attribute(key: "_quantity") { key value }
       specialNumbering: attribute(key: "_special_numbering") { key value }
       specials: attribute(key: "_specials") { key value }
       holyDaysCount: attribute(key: "_holydays_count") { key value }
