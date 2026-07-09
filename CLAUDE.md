@@ -50,20 +50,53 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
 ## Build order (follow this sequence)
 
 1. Scaffold app: `shopify app init`, then generate `cart_transform` and
-   `theme_app_extension` extensions.
+   `theme_app_extension` extensions. ✅ done.
 2. Create metafield definitions on the dev store from `metafield-schema.md`
    (write a setup script). Attach the Weekly `price_table` from
-   `price-table-weekly.json`.
+   `price-table-weekly.json`. ✅ done.
 3. **Spike the Cart Transform Function in isolation first.** Prove that a cart line
    for 52 Weekly sets + special numbering charges exactly £163.32 at the dev store
    checkout, recomputed server-side. Do this BEFORE building any UI.
-4. Build the theme app extension wizard, porting the logic from
-   `weekly-configurator.html`, reading the metafields.
-5. Wire uploads; confirm the file URL survives onto the paid order.
-6. Full end-to-end test on the dev store: configure → live total → checkout → paid
+   ✅ **DONE and verified end-to-end** — see "Cart Transform spike — proven" below.
+4. **Next up:** prove Tier 3 (Economy) prices correctly by config alone, using the
+   same AJAX-only spike method as step 3 (new product + its own `price_table`/
+   `addon_fees` metafields, no wizard needed yet) — validates the data-driven
+   design cheaply before investing in the wizard build. Full options-locking
+   behaviour still needs the wizard UI to actually verify, so this only proves
+   the pricing/metafield side early.
+5. Build the theme app extension wizard, porting the logic from
+   `weekly-configurator.html`, reading the metafields. Must add-to-cart with
+   `quantity: 1` and write `_quantity` — see Hard rules.
+6. Wire uploads; confirm the file URL survives onto the paid order.
+7. Full end-to-end test on the dev store: configure → live total → checkout → paid
    order shows correct charge + all line item properties + file.
-7. Prove Tier 3 (Economy) by writing only its metafield JSON — no code changes.
-8. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
+8. Confirm Tier 3 (Economy) end-to-end through the actual wizard (options
+   correctly locked, simpler price table) — no code changes, config only.
+9. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
+
+### Cart Transform spike — proven
+
+Confirmed live on `lockie-church.myshopify.com` (a non-Plus "Grow" plan dev
+store) via `/cart/add.js` + real checkout, no theme/wizard UI involved:
+
+- 52 Weekly Boxed Sets + special numbering + 2 specials (Christmas, Easter)
+  charges **exactly £163.32** at checkout, recomputed server-side by the
+  `pricing-function` Cart Transform.
+- `lineExpand` (not `lineUpdate`) is the correct mechanism for a non-Plus
+  production store — confirmed via a live `update_feature_not_available`
+  rejection on `lineUpdate`, and `lineExpand` working cleanly in its place.
+- All `_`-prefixed line item properties survive onto the transformed line via
+  explicit `ExpandedItem.attributes` passthrough (`_quantity`,
+  `_special_numbering`, `_specials`, plus `_config_json` for everything else).
+- Exact-to-the-penny totals require add-to-cart with `quantity: 1` and the
+  real box count carried via `_quantity` — see Hard rules for why.
+- Three real bugs were found and fixed along the way (all documented in Hard
+  rules below): the Plus-only restriction on `lineUpdate`, `ExpandedItem`
+  quantity squaring the total, and per-unit rounding drift on quantities > 1.
+
+Remaining open item from this spike: confirm production (lockiechurch.com)'s
+actual currency is GBP before go-live — the dev store here is USD, which was
+fine for proving the pricing math but not representative of the real store.
 
 ## Hard rules and known gotchas
 
