@@ -1,0 +1,83 @@
+{
+  "payload": {
+    "export": "cart-transform-run",
+    "target": "cart.transform.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 52,
+            "boxColour": { "key": "_box_colour", "value": "Stained Glass" },
+            "envelopeColour": null,
+            "textColour": null,
+            "heading1": null,
+            "heading2": null,
+            "heading3": null,
+            "heading4": null,
+            "verse": null,
+            "verseCustom": null,
+            "design": null,
+            "designUploadUrl": null,
+            "specialNumbering": { "key": "_special_numbering", "value": "yes" },
+            "numberingFrom": null,
+            "numberingTo": null,
+            "excludedNumbers": null,
+            "specials": { "key": "_specials", "value": "Christmas,Easter" },
+            "holyDaysCount": null,
+            "holydayUploadUrl": null,
+            "startDate": null,
+            "notes": null,
+            "calcUnitPrice": null,
+            "calcLineTotal": null,
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/48828363342068",
+              "product": {
+                "priceTable": {
+                  "jsonValue": {
+                    "currency": "GBP",
+                    "rounding": "line_total_2dp",
+                    "bands": [
+                      { "from": 50, "to": 54, "unit": 2.810046 }
+                    ]
+                  }
+                },
+                "addonFees": {
+                  "jsonValue": {
+                    "special_numbering": { "label": "Special numbering", "amount": 12, "type": "flat" },
+                    "extra_envelope": { "label": "Additional special envelope", "amount": 0.05, "type": "per_unit_per_set" }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "lineExpand": {
+            "cartLineId": "gid://shopify/CartLine/1",
+            "expandedCartItems": [
+              {
+                "merchandiseId": "gid://shopify/ProductVariant/48828363342068",
+                "quantity": 52,
+                "attributes": [
+                  { "key": "_box_colour", "value": "Stained Glass" },
+                  { "key": "_special_numbering", "value": "yes" },
+                  { "key": "_specials", "value": "Christmas,Easter" }
+                ],
+                "price": {
+                  "adjustment": {
+                    "fixedPricePerUnit": { "amount": "3.140769231" }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

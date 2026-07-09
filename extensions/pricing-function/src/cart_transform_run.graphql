@@ -3,11 +3,31 @@ query CartTransformRunInput {
     lines {
       id
       quantity
-      specialNumbering: attribute(key: "_special_numbering") { value }
-      specials: attribute(key: "_specials") { value }
-      holyDaysCount: attribute(key: "_holydays_count") { value }
+      boxColour: attribute(key: "_box_colour") { key value }
+      envelopeColour: attribute(key: "_envelope_colour") { key value }
+      textColour: attribute(key: "_text_colour") { key value }
+      heading1: attribute(key: "_heading_1") { key value }
+      heading2: attribute(key: "_heading_2") { key value }
+      heading3: attribute(key: "_heading_3") { key value }
+      heading4: attribute(key: "_heading_4") { key value }
+      verse: attribute(key: "_verse") { key value }
+      verseCustom: attribute(key: "_verse_custom") { key value }
+      design: attribute(key: "_design") { key value }
+      designUploadUrl: attribute(key: "_design_upload_url") { key value }
+      specialNumbering: attribute(key: "_special_numbering") { key value }
+      numberingFrom: attribute(key: "_numbering_from") { key value }
+      numberingTo: attribute(key: "_numbering_to") { key value }
+      excludedNumbers: attribute(key: "_excluded_numbers") { key value }
+      specials: attribute(key: "_specials") { key value }
+      holyDaysCount: attribute(key: "_holydays_count") { key value }
+      holydayUploadUrl: attribute(key: "_holyday_upload_url") { key value }
+      startDate: attribute(key: "_start_date") { key value }
+      notes: attribute(key: "_notes") { key value }
+      calcUnitPrice: attribute(key: "_calc_unit_price") { key value }
+      calcLineTotal: attribute(key: "_calc_line_total") { key value }
       merchandise {
         ... on ProductVariant {
+          id
           product {
             priceTable: metafield(namespace: "custom", key: "price_table") { jsonValue }
             addonFees: metafield(namespace: "custom", key: "addon_fees") { jsonValue }

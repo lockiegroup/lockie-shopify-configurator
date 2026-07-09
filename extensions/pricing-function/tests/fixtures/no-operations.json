@@ -7,7 +7,36 @@
         "lines": [
           {
             "id": "gid://shopify/CartLine/1",
-            "quantity": 1
+            "quantity": 1,
+            "boxColour": null,
+            "envelopeColour": null,
+            "textColour": null,
+            "heading1": null,
+            "heading2": null,
+            "heading3": null,
+            "heading4": null,
+            "verse": null,
+            "verseCustom": null,
+            "design": null,
+            "designUploadUrl": null,
+            "specialNumbering": null,
+            "numberingFrom": null,
+            "numberingTo": null,
+            "excludedNumbers": null,
+            "specials": null,
+            "holyDaysCount": null,
+            "holydayUploadUrl": null,
+            "startDate": null,
+            "notes": null,
+            "calcUnitPrice": null,
+            "calcLineTotal": null,
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/1",
+              "product": {
+                "priceTable": null,
+                "addonFees": null
+              }
+            }
           }
         ]
       }
