@@ -41,29 +41,18 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
       holyDaysCount: parseInt(line.holyDaysCount?.value ?? "0", 10) || 0,
     });
 
+    // Function input queries have a max complexity of 30, and each individual
+    // attribute(key:) lookup costs 2 — not enough budget to query all ~22
+    // `_`-prefixed properties individually. The pricing-relevant ones are kept
+    // as their own named attributes; everything else (headings, verse, design,
+    // numbering range, notes, upload URLs, etc.) is written by the theme wizard
+    // as a single JSON-encoded `_config_json` attribute and passed through
+    // opaquely here without the function needing to parse it.
     const attributes = collectAttributes([
-      line.boxColour,
-      line.envelopeColour,
-      line.textColour,
-      line.heading1,
-      line.heading2,
-      line.heading3,
-      line.heading4,
-      line.verse,
-      line.verseCustom,
-      line.design,
-      line.designUploadUrl,
       line.specialNumbering,
-      line.numberingFrom,
-      line.numberingTo,
-      line.excludedNumbers,
       line.specials,
       line.holyDaysCount,
-      line.holydayUploadUrl,
-      line.startDate,
-      line.notes,
-      line.calcUnitPrice,
-      line.calcLineTotal,
+      line.configJson,
     ]);
 
     operations.push({
