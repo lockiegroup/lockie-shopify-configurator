@@ -61,7 +61,12 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
         expandedCartItems: [
           {
             merchandiseId: line.merchandise.id,
-            quantity: line.quantity,
+            // ExpandedItem.quantity is "units of this component per one unit of
+            // the parent line" — Shopify multiplies it by the parent line's own
+            // quantity. Since this is a 1:1 price override (not a real bundle),
+            // that must be 1, not line.quantity — otherwise the final count
+            // becomes line.quantity² (52 × 52 = 2704, observed live).
+            quantity: 1,
             attributes,
             price: {
               adjustment: {

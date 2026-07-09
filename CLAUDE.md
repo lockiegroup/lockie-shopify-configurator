@@ -69,10 +69,24 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
 
 - **Never trust the client price.** The Cart Transform Function recomputes from
   metafields. The front end's `_calc_line_total` is for audit only.
-- **Use `lineUpdate` for pricing, not `lineExpand`.** `lineExpand` is known to strip
-  line item properties off the expanded lines. Keep all config data on the single
-  parent line. If a visible fee line is wanted, confirm properties survive before
-  relying on expand.
+- **Use `lineExpand` for pricing, not `lineUpdate`.** `lineUpdate` is restricted to
+  Shopify Plus / Development-plan stores (confirmed via live `update_feature_not_available`
+  error) — production (lockiechurch.com) will not be Plus, so `lineUpdate` can never work
+  there. `lineExpand` has no such restriction. Use a single-item expand (same variant,
+  adjusted price) as the override mechanism. `lineExpand` does not carry the original
+  line's properties over automatically — `ExpandedItem.attributes` must be set explicitly
+  from properties fetched in the input query.
+- **`ExpandedItem.quantity` is per parent-line-unit, not the parent's total quantity.**
+  Shopify multiplies it by the parent cart line's own quantity. For a 1:1 price override
+  (not a real multi-component bundle), this must be `1` — setting it to the parent line's
+  quantity squares the final count (confirmed live: qty 52 → 2704 units charged at the
+  per-unit price). Keep the per-unit price as `lineTotal / line.quantity`; only the
+  `ExpandedItem.quantity` field is fixed at `1`.
+- **Function input query complexity cap is 30.** Each individual `attribute(key:)`
+  lookup costs 2, and `CartLine` has no bulk/plural attributes field — querying all
+  ~22 `_`-prefixed properties individually (53) exceeds the cap. Only
+  `_special_numbering`, `_specials`, and `_holydays_count` are queried/passed through
+  individually; see the line item properties section below for how the rest are handled.
 - **One Cart Transform function per app.** This function must be the sole owner of
   configured-product pricing. Don't install another app that also uses Cart Transform
   against these products.
@@ -100,10 +114,19 @@ line_total   = round2(base_total + addons_total)
 
 ## Line item properties written on add-to-basket
 
+Kept as individual named properties (queried and pricing-relevant, and worth
+fulfilment seeing as their own columns): `_special_numbering`, `_specials`,
+`_holydays_count`.
+
+Everything else is written as a single JSON-encoded `_config_json` property
+(the Cart Transform Function's input query complexity cap of 30 doesn't allow
+querying ~22 properties individually — see Hard rules above):
 `_box_colour, _envelope_colour, _text_colour, _heading_1.._heading_4,
-_verse | _verse_custom, _design | _design_upload_url, _special_numbering,
-_numbering_from, _numbering_to, _excluded_numbers, _specials, _holydays_count,
-_holyday_upload_url, _start_date, _notes, _calc_unit_price, _calc_line_total`
+_verse | _verse_custom, _design | _design_upload_url, _numbering_from,
+_numbering_to, _excluded_numbers, _holyday_upload_url, _start_date, _notes,
+_calc_unit_price, _calc_line_total`. The Function passes `_config_json` through
+opaquely onto the expanded line without parsing it — fulfilment/admin tooling
+is responsible for decoding it for display.
 
 Underscore prefix = hidden from customer, visible to fulfilment on the order.
 

@@ -44,7 +44,7 @@
             "expandedCartItems": [
               {
                 "merchandiseId": "gid://shopify/ProductVariant/48828363342068",
-                "quantity": 52,
+                "quantity": 1,
                 "attributes": [
                   { "key": "_special_numbering", "value": "yes" },
                   { "key": "_specials", "value": "Christmas,Easter" },
