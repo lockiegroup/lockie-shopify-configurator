@@ -16,7 +16,7 @@
  *
  * 2. shopify store auth \
  *        --store <your-dev-store.myshopify.com> \
- *        --scopes write_products
+ *        --scopes write_products,write_metafields,write_cart_transforms
  *      Stores an online access token for this store in the CLI session.
  *      Re-run if you open a new terminal or the token expires.
  *
@@ -149,11 +149,11 @@ function execute(query, variables = {}, isMutation = false) {
 
 // ── Static data ───────────────────────────────────────────────────────────────
 
-const PRICE_TABLE = JSON.parse(
+const PRICE_TABLE_WEEKLY = JSON.parse(
   readFileSync(resolve(ROOT, "price-table-weekly.json"), "utf8")
 );
 
-const ADDON_FEES = {
+const ADDON_FEES_WEEKLY = {
   special_numbering: { label: "Special numbering",           amount: 12.00, type: "flat"             },
   extra_envelope:    { label: "Additional special envelope", amount:  0.05, type: "per_unit_per_set" },
   printed_extra:     { label: "Printed additional envelope", amount:  0.01, type: "per_unit_per_set" },
@@ -189,6 +189,62 @@ const CONFIG_WEEKLY = {
     notes:      { enabled: true },
   },
 };
+
+// Tier 3 — Economy. Only three real price bands (qty 24's old £2.70 WooCommerce
+// rate is legacy noise vs. the £2.78 either side of it — collapsed into one
+// 20–39 band; see CLAUDE.md).
+const PRICE_TABLE_ECONOMY = {
+  currency: "GBP",
+  rounding: "line_total_2dp",
+  bands: [
+    { from: 20,  to: 39,  unit: 2.78 },
+    { from: 40,  to: 99,  unit: 1.83 },
+    { from: 100, to: 300, unit: 1.75 },
+  ],
+};
+
+// Same fee keys as Weekly — extra_envelope overridden to 0.03.
+const ADDON_FEES_ECONOMY = {
+  special_numbering: { label: "Special numbering",           amount: 12.00, type: "flat"             },
+  extra_envelope:    { label: "Additional special envelope", amount:  0.03, type: "per_unit_per_set" },
+  printed_extra:     { label: "Printed additional envelope", amount:  0.01, type: "per_unit_per_set" },
+  holyday_special:   { label: "Holyday special",             amount:  0.05, type: "per_unit_per_set" },
+};
+
+const CONFIG_ECONOMY = {
+  min_quantity: 20,
+  uploads_enabled: false,
+  steps: {
+    options: {
+      enabled: true,
+      box_colour:      { values: ["Stained Glass"], locked: true },
+      envelope_colour: { values: ["Manilla"], locked: true },
+      text_colour:     { values: ["Black"], locked: true },
+    },
+    headings: {
+      enabled: true,
+      lines: ["Church/Charity Name", "Church District", "Church Diocese", "Registered Charity No."],
+    },
+    design: {
+      enabled: true,
+      verse:  { enabled: true, allow_custom: true },
+      design: { enabled: true, allow_custom: true, allow_upload: false },
+    },
+    numbering: {
+      enabled: true,
+      special_numbering_fee_key: "special_numbering",
+      specials: ["Christmas", "Easter", "Easter (2)", "Harvest", "Gift Day", "Initial Offering"],
+    },
+    holydays:   { enabled: true, max: 30 },
+    start_date: { enabled: true, weekday_only: "Sunday" },
+    notes:      { enabled: true },
+  },
+};
+
+const PRODUCTS = [
+  { title: "Weekly Boxed Sets",  priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY  },
+  { title: "Economy Boxed Sets", priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY },
+];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────
 
@@ -231,19 +287,19 @@ function ensureMetafieldDefinitions() {
   }
 }
 
-// ── Step 2: Weekly Boxed Sets product ─────────────────────────────────────────
+// ── Step 2: product ────────────────────────────────────────────────────────────
 
-function ensureProduct() {
-  console.log("\n── 2. Weekly Boxed Sets product");
+function ensureProduct(title) {
+  console.log(`\n── 2. ${title} product`);
 
   const { products } = execute(`{
-    products(first: 5, query: "title:'Weekly Boxed Sets'") {
+    products(first: 5, query: "title:'${title}'") {
       nodes { id title variants(first: 1) { nodes { id } } }
     }
   }`);
 
   // Shopify's title query is a fuzzy search; filter for exact match.
-  const match = products.nodes.find((p) => p.title === "Weekly Boxed Sets");
+  const match = products.nodes.find((p) => p.title === title);
   if (match) {
     console.log(`   ✓  Product already exists`);
     console.log(`      Product GID : ${match.id}`);
@@ -261,9 +317,13 @@ function ensureProduct() {
     }`,
     {
       input: {
-        title: "Weekly Boxed Sets",
+        title,
         status: "DRAFT",
-        variants: [{ price: "0.01" }], // Placeholder — Cart Transform overwrites at checkout.
+        productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
+        variants: [{
+          price: "0.01",
+          optionValues: [{ optionName: "Title", name: "Default Title" }],
+        }], // Placeholder price — Cart Transform overwrites at checkout.
       },
     },
     true
@@ -280,8 +340,8 @@ function ensureProduct() {
 
 // ── Step 3: Attach metafield values ──────────────────────────────────────────
 
-function attachMetafields(productGid) {
-  console.log("\n── 3. Metafield values on Weekly Boxed Sets");
+function attachMetafields(productGid, title, { priceTable, addonFees, config }) {
+  console.log(`\n── 3. Metafield values on ${title}`);
 
   // metafieldsSet is an upsert — creates or updates, always idempotent.
   const data = execute(
@@ -293,9 +353,9 @@ function attachMetafields(productGid) {
     }`,
     {
       metafields: [
-        { namespace: "custom", key: "price_table", type: "json", ownerId: productGid, value: JSON.stringify(PRICE_TABLE)   },
-        { namespace: "custom", key: "addon_fees",  type: "json", ownerId: productGid, value: JSON.stringify(ADDON_FEES)    },
-        { namespace: "custom", key: "config",      type: "json", ownerId: productGid, value: JSON.stringify(CONFIG_WEEKLY) },
+        { namespace: "custom", key: "price_table", type: "json", ownerId: productGid, value: JSON.stringify(priceTable) },
+        { namespace: "custom", key: "addon_fees",  type: "json", ownerId: productGid, value: JSON.stringify(addonFees)  },
+        { namespace: "custom", key: "config",      type: "json", ownerId: productGid, value: JSON.stringify(config)    },
       ],
     },
     true
@@ -310,14 +370,31 @@ function attachMetafields(productGid) {
   }
 }
 
+// ── Cart Transform registration — NOT in this script ─────────────────────────
+//
+// cartTransformCreate cannot be called via `shopify store execute` because
+// `shopifyFunctions` is scoped to the querying API client: a store-level token
+// (from `shopify store auth`) is not the app, so it sees no functions.
+//
+// cartTransformCreate is called automatically from the `afterAuth` hook in
+// app/shopify.server.ts, which fires after every OAuth install/re-auth using
+// the app's own access token. To activate the function on the store:
+//
+//   1. shopify app deploy          (push updated scopes + WASM)
+//   2. shopify app dev             (start the local tunnel)
+//   3. Open the app in the Shopify Admin → OAuth fires → afterAuth registers it
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 console.log(`\nConfiguring dev store: https://${STORE}`);
 try {
   ensureMetafieldDefinitions();
-  const productGid = ensureProduct();
-  attachMetafields(productGid);
-  console.log("\nAll done. Re-run at any time — the script is idempotent.\n");
+  for (const { title, priceTable, addonFees, config } of PRODUCTS) {
+    const productGid = ensureProduct(title);
+    attachMetafields(productGid, title, { priceTable, addonFees, config });
+  }
+  console.log("\nAll done. Re-run at any time — the script is idempotent.");
+  console.log("CartTransform activation: run `shopify app deploy` then `shopify app dev` and open the app.\n");
 } catch (err) {
   console.error("\nSetup failed:", err.message);
   process.exit(1);
