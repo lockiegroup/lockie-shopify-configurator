@@ -1,5 +1,6 @@
 packages:
   - "extensions/*"
+  - "wizard-pricing-tests"
 
 allowBuilds:
   '@parcel/watcher': true

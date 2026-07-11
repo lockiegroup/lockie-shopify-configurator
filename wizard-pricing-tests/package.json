@@ -1,0 +1,13 @@
+{
+  "name": "wizard-pricing-tests",
+  "version": "0.0.1",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Tests for extensions/configurator-wizard/assets/pricing.js, kept outside the extension since a theme app extension's directory may only contain assets/blocks/snippets/locales.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
