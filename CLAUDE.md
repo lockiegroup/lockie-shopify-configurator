@@ -58,13 +58,14 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    for 52 Weekly sets + special numbering charges exactly £163.32 at the dev store
    checkout, recomputed server-side. Do this BEFORE building any UI.
    ✅ **DONE and verified end-to-end** — see "Cart Transform spike — proven" below.
-4. **Next up:** prove Tier 3 (Economy) prices correctly by config alone, using the
-   same AJAX-only spike method as step 3 (new product + its own `price_table`/
+4. Prove Tier 3 (Economy) prices correctly by config alone, using the same
+   AJAX-only spike method as step 3 (new product + its own `price_table`/
    `addon_fees` metafields, no wizard needed yet) — validates the data-driven
-   design cheaply before investing in the wizard build. Full options-locking
-   behaviour still needs the wizard UI to actually verify, so this only proves
-   the pricing/metafield side early.
-5. Build the theme app extension wizard, porting the logic from
+   design cheaply before investing in the wizard build.
+   ✅ **DONE and verified end-to-end** — see "Tier 3 (Economy) spike — proven"
+   below. Full options-locking behaviour still needs the wizard UI to actually
+   verify (step 8).
+5. **Next up:** build the theme app extension wizard, porting the logic from
    `weekly-configurator.html`, reading the metafields. Must add-to-cart with
    `quantity: 1` and write `_quantity` — see Hard rules.
 6. Wire uploads; confirm the file URL survives onto the paid order.
@@ -97,6 +98,31 @@ store) via `/cart/add.js` + real checkout, no theme/wizard UI involved:
 Remaining open item from this spike: confirm production (lockiechurch.com)'s
 actual currency is GBP before go-live — the dev store here is USD, which was
 fine for proving the pricing math but not representative of the real store.
+
+### Tier 3 (Economy) spike — proven
+
+Confirmed live on the same dev store, same AJAX-only method (`/cart/add.js` +
+real checkout, no wizard UI) — new "Economy Boxed Sets" product seeded via the
+generalized `scripts/setup-dev-store.mjs` (now loops over a `PRODUCTS` list
+instead of hardcoding Weekly) with its own `custom.price_table`/`custom.addon_fees`:
+
+- 52 Economy sets + special numbering + 2 specials (Christmas, Easter) charges
+  **exactly $110.28** at checkout — `round2(1.83×52)=95.16 + 12.00 + 0.03×2×52=3.12`.
+- Same deployed `pricing-function` Cart Transform, **zero code changes** — it
+  priced a second product correctly purely because the Function reads
+  `price_table`/`addon_fees` from `merchandise.product.metafield(...)` on
+  whichever variant is in the cart, not from anything hardcoded to Weekly.
+- Different band (£1.83 vs Weekly's per-band rates) and different fee
+  (`extra_envelope` £0.03 vs Weekly's £0.05) both applied correctly, proving the
+  Function is genuinely generic across per-product metafield values, not just
+  reusing Weekly's numbers by coincidence.
+- Confirms the data-driven design from `metafield-schema.md`: layout and
+  pricing rules are JSON, not code — Tier 2/Tier 3 differ only in what's in the
+  metafields.
+
+The qty-24 anomaly (Economy priced £2.70 in old WooCommerce data vs. £2.78 on
+either side) was resolved as **legacy noise**, not a deliberate break — seeded
+as one flat 20–39 band at £2.78. See Hard rules below.
 
 ## Hard rules and known gotchas
 
@@ -139,8 +165,9 @@ fine for proving the pricing math but not representative of the real store.
 - **Rounding:** round at the line total to 2dp (`line_total_2dp`). Unit prices carry up
   to 9 decimals. Match WooCommerce's displayed totals exactly — verified values:
   20→£76.67, 52→£146.12, 100→£220.30, 200→£427.42, 500→£925.01.
-- **Data anomaly to resolve before migration:** Economy qty 24 is priced £2.70 while
-  20–23 and 25–39 are £2.78. Decide if deliberate or legacy noise.
+- **Data anomaly, resolved:** Economy qty 24 was priced £2.70 in old WooCommerce
+  data while 20–23 and 25–39 were £2.78. Decided legacy noise, not deliberate —
+  seeded as one flat 20–39 band at £2.78. See "Tier 3 (Economy) spike — proven".
 - **Sunday-only start date:** the start date step must validate that the chosen date
   is a Sunday.
 
@@ -180,7 +207,8 @@ Underscore prefix = hidden from customer, visible to fulfilment on the order.
 
 ## Dev environment
 
-- Shopify Partner dev store (near-empty: just the Weekly product while building).
+- Shopify Partner dev store (near-empty: Weekly Boxed Sets + Economy Boxed Sets
+  while building).
 - Shopify CLI for scaffold and deploy. Node.js required.
 - Reference theme: Dawn.
 - Full catalogue migration happens separately via Matrixify, not on the dev build store.
