@@ -33,7 +33,7 @@ const pricingPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../extensions/configurator-wizard/assets/pricing.js"
 );
-const { computeLineTotal } = loadUmdAsCommonJs(pricingPath);
+const { computeLineTotal, countExcluded, numberingMatch, hasSpecialNumbering } = loadUmdAsCommonJs(pricingPath);
 
 const TABLES_BY_TIER = {
   weekly: { priceTable: weeklyPriceTable, addonFees: weeklyAddonFees },
@@ -73,5 +73,65 @@ describe("Edge cases", () => {
         holyDaysCount: 0,
       })
     ).toThrow("No price band covers quantity 1");
+  });
+});
+
+// The £12 special-numbering fee is no longer a customer-facing yes/no toggle
+// — it's derived from whether the numbering range has valid exclusions (see
+// hasSpecialNumbering's own header comment in pricing.js). These cases pin
+// down that derivation so the live-summary £12 and the checkout-charged £12
+// (Stage 3's _special_numbering line item property, once wired) can never
+// disagree about when the fee applies.
+describe("hasSpecialNumbering (the £12 fee trigger)", () => {
+  it("is false for a clean sequential run with no exclusions", () => {
+    expect(hasSpecialNumbering({ num_from: "1", num_to: "52", excluded: "" })).toBe(false);
+  });
+
+  it("is true once at least one valid in-range exclusion is present", () => {
+    expect(hasSpecialNumbering({ num_from: "1", num_to: "53", excluded: "13" })).toBe(true);
+  });
+
+  it("ignores out-of-range exclusions — does not trigger the fee", () => {
+    expect(hasSpecialNumbering({ num_from: "1", num_to: "52", excluded: "9999" })).toBe(false);
+  });
+
+  it("ignores non-numeric/typo exclusions — does not trigger the fee", () => {
+    expect(hasSpecialNumbering({ num_from: "1", num_to: "52", excluded: "abc" })).toBe(false);
+  });
+
+  it("is false when no range has been entered yet", () => {
+    expect(hasSpecialNumbering({ num_from: "", num_to: "", excluded: "13" })).toBe(false);
+  });
+
+  it("dedupes repeated exclusions rather than double counting", () => {
+    const match = numberingMatch({ num_from: "1", num_to: "53", excluded: "13, 13, 13" });
+    expect(match.excludedCount).toBe(1);
+    expect(match.effectiveCount).toBe(52);
+  });
+});
+
+describe("countExcluded", () => {
+  it("counts only distinct, numeric, in-range entries", () => {
+    expect(countExcluded("13, 44, 44, 9999, abc, 20", 1, 52)).toBe(3);
+  });
+});
+
+// End-to-end proof that the derived trigger produces the same checkout total
+// as the old explicit-toggle fixture ("Weekly qty 52 + special numbering + 2
+// specials" above, £163.32): a customer who types a from/to range with one
+// valid exclusion is charged identically to the old "Yes" toggle case.
+describe("Derived trigger produces the same total as the retired toggle", () => {
+  it("Weekly qty 52, range 1-53 excluding 13, + 2 specials matches £163.32", () => {
+    const state = { num_from: "1", num_to: "53", excluded: "13" };
+    expect(hasSpecialNumbering(state)).toBe(true);
+    const total = computeLineTotal({
+      qty: 52,
+      priceTable: weeklyPriceTable,
+      addonFees: weeklyAddonFees,
+      specialNumbering: hasSpecialNumbering(state),
+      specialsCount: 2,
+      holyDaysCount: 0,
+    });
+    expect(total).toBe(163.32);
   });
 });

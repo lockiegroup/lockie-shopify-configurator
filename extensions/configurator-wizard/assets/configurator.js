@@ -11,9 +11,11 @@
  *
  * Stage 2: live price display, via the shared pricing.js (loaded before this
  * file — see pricing.js's own header for why it's a separate, tested module
- * rather than inlined here). Only qty, special_numbering, specials, and
- * holydays affect price per the formula in CLAUDE.md; box/envelope/text
- * colour, headings, verse/design, numbering range, start date, and notes do
+ * rather than inlined here). Only qty, specials, holydays, and — since the
+ * numbering-refinement pass — the numbering range/exclusions affect price
+ * per the formula in CLAUDE.md (special numbering is now derived from
+ * exclusions, not a toggle; see hasSpecialNumbering in pricing.js); box/
+ * envelope/text colour, headings, verse/design, start date, and notes do
  * not, so refresh() is only wired to the inputs that actually move the total.
  * Display only — add-to-cart wiring is Stage 3.
  *
@@ -61,27 +63,16 @@
     return priceTable.bands[priceTable.bands.length - 1].to;
   }
 
-  // Counts distinct excluded numbers that actually fall inside [from, to] —
-  // typos or out-of-range entries shouldn't silently count toward the match.
-  function countExcluded(excludedStr, from, to) {
-    var seen = {};
-    (excludedStr || "").split(",").forEach(function (part) {
-      var n = parseInt(part.trim(), 10);
-      if (!isNaN(n) && n >= from && n <= to) seen[n] = true;
-    });
-    return Object.keys(seen).length;
+  // numberingMatch/hasSpecialNumbering now live in pricing.js (fixture/unit-
+  // tested there — see its header comment) since they directly decide
+  // whether the £12 special-numbering fee applies. Thin delegates here keep
+  // every call site in this file unchanged.
+  function numberingMatch(state) {
+    return window.LockieConfiguratorPricing.numberingMatch(state);
   }
 
-  // The numbered envelopes must match the set quantity exactly: range size
-  // minus valid exclusions has to equal qty, or fulfilment prints the wrong
-  // count of numbered envelopes for the boxes actually being sent.
-  function numberingMatch(state) {
-    var from = +state.num_from;
-    var to = +state.num_to;
-    if (!state.num_from || !state.num_to || isNaN(from) || isNaN(to) || to < from) return null;
-    var rangeCount = to - from + 1;
-    var excludedCount = countExcluded(state.excluded, from, to);
-    return { rangeCount: rangeCount, excludedCount: excludedCount, effectiveCount: rangeCount - excludedCount };
+  function hasSpecialNumbering(state) {
+    return window.LockieConfiguratorPricing.hasSpecialNumbering(state);
   }
 
   function numberingMatchMessage(match, qty) {
@@ -179,14 +170,12 @@
         render: renderNumbering,
         validate: function (ctx) {
           var s = ctx.state;
-          if (s.special_numbering) {
-            if (!s.num_from || !s.num_to) return "Enter the from and to numbers for your set.";
-            if (+s.num_from < 1) return "Start number must be at least 1.";
-            if (+s.num_to < +s.num_from) return "End number must be greater than the start.";
-            var match = numberingMatch(s);
-            if (!match || match.effectiveCount !== s.qty) {
-              return numberingMatchMessage(match, s.qty).text;
-            }
+          if (!s.num_from || !s.num_to) return "Enter the from and to numbers for your set.";
+          if (+s.num_from < 1) return "Start number must be at least 1.";
+          if (+s.num_to < +s.num_from) return "End number must be greater than the start.";
+          var match = numberingMatch(s);
+          if (!match || match.effectiveCount !== s.qty) {
+            return numberingMatchMessage(match, s.qty).text;
           }
           return "";
         },
@@ -441,21 +430,14 @@
     var config = ctx.config;
     var state = ctx.state;
     var specials = config.steps.numbering.specials || [];
+    var extraEnvelopeFee = ctx.addonFees && ctx.addonFees.extra_envelope;
+    var extraEnvelopeLabel =
+      "Additional special collection envelopes" +
+      (extraEnvelopeFee ? " (+" + ctx.formatCurrency(extraEnvelopeFee.amount) + " each)" : "");
 
     el.innerHTML =
       '<div class="lockie-configurator__field">' +
-      '<label class="lockie-configurator__label">Special numbering required?</label>' +
-      '<div class="lockie-configurator__toggle-row" id="lc-sn-row">' +
-      '<span class="lockie-configurator__chip" data-v="no" aria-pressed="' +
-      !state.special_numbering +
-      '">No</span>' +
-      '<span class="lockie-configurator__chip" data-v="yes" aria-pressed="' +
-      state.special_numbering +
-      '">Yes (+£12)</span>' +
-      "</div>" +
-      '<div id="lc-num-wrap" style="display:' +
-      (state.special_numbering ? "block" : "none") +
-      '">' +
+      '<label class="lockie-configurator__label">Numbering range <span class="lockie-configurator__req">*</span></label>' +
       '<div class="lockie-configurator__row2">' +
       '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Numbered from</label>' +
       '<input type="number" id="lc-nfrom" min="1" value="' +
@@ -466,15 +448,19 @@
       escapeHtml(state.num_to) +
       '"></div>' +
       "</div>" +
-      '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Excluded numbers</label>' +
+      '<div class="lockie-configurator__note" id="lc-num-match"></div>' +
+      "</div>" +
+      '<div class="lockie-configurator__field" id="lc-excl-wrap" style="display:none">' +
+      '<label class="lockie-configurator__label">Excluded numbers</label>' +
       '<input type="text" id="lc-nexcl" placeholder="e.g. 13, 44, 99" value="' +
       escapeHtml(state.excluded) +
       '"><div class="lockie-configurator__note">Numbers to skip in the set.</div>' +
-      '<div class="lockie-configurator__note" id="lc-num-match"></div></div>' +
       "</div>" +
+      '<div class="lockie-configurator__note" id="lc-sn-notice" style="display:none;color:var(--lc-accent)">' +
+      "£12 will be added for special numbering (non-sequential numbers)." +
       "</div>" +
       '<div class="lockie-configurator__field">' +
-      '<label class="lockie-configurator__label">Additional special collection envelopes</label>' +
+      '<label class="lockie-configurator__label">' + escapeHtml(extraEnvelopeLabel) + "</label>" +
       '<div class="lockie-configurator__note" style="margin-bottom:8px">Inserted at the back of each set.</div>' +
       '<div class="lockie-configurator__toggle-row">' +
       specials
@@ -493,32 +479,32 @@
       "</div>" +
       "</div>";
 
-    function updateMatch() {
+    function updateNumberingUI() {
+      var match = numberingMatch(state);
       var matchEl = el.querySelector("#lc-num-match");
-      if (!matchEl) return;
-      var msg = numberingMatchMessage(numberingMatch(state), state.qty);
+      var msg = numberingMatchMessage(match, state.qty);
       matchEl.textContent = msg.text;
       matchEl.style.color = msg.ok ? "var(--lc-green)" : "var(--lc-accent)";
+
+      // Exclusions are only needed once the range is wider than the set
+      // count — that's how a customer deliberately skips numbers. Once
+      // they've typed something there, keep the field visible even if the
+      // range is narrowed back down, so it stays editable/clearable.
+      var rangeCount = match ? match.rangeCount : 0;
+      var showExcluded = rangeCount > state.qty || (state.excluded || "").trim() !== "";
+      el.querySelector("#lc-excl-wrap").style.display = showExcluded ? "block" : "none";
+
+      el.querySelector("#lc-sn-notice").style.display = hasSpecialNumbering(state) ? "block" : "none";
     }
 
-    el.querySelectorAll("#lc-sn-row .lockie-configurator__chip").forEach(function (c) {
-      c.addEventListener("click", function () {
-        state.special_numbering = c.dataset.v === "yes";
-        el.querySelectorAll("#lc-sn-row .lockie-configurator__chip").forEach(function (x) {
-          x.setAttribute("aria-pressed", (x.dataset.v === "yes") === state.special_numbering);
-        });
-        el.querySelector("#lc-num-wrap").style.display = state.special_numbering ? "block" : "none";
-        ctx.refresh();
-      });
-    });
     var nfrom = el.querySelector("#lc-nfrom");
-    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; updateMatch(); });
+    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; updateNumberingUI(); ctx.refresh(); });
     var nto = el.querySelector("#lc-nto");
-    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; updateMatch(); });
+    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; updateNumberingUI(); ctx.refresh(); });
     var nexcl = el.querySelector("#lc-nexcl");
-    if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; updateMatch(); });
+    if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; updateNumberingUI(); ctx.refresh(); });
 
-    updateMatch();
+    updateNumberingUI();
 
     el.querySelectorAll(".lc-sp").forEach(function (c) {
       c.addEventListener("click", function () {
@@ -652,7 +638,7 @@
 
       var lines = [{ label: qty + " sets × " + unitFormatter.format(unit), amount: Pricing.round2(unit * qty) }];
 
-      if (state.special_numbering && addonFees.special_numbering && addonFees.special_numbering.type === "flat") {
+      if (hasSpecialNumbering(state) && addonFees.special_numbering && addonFees.special_numbering.type === "flat") {
         lines.push({ label: addonFees.special_numbering.label || "Special numbering", amount: addonFees.special_numbering.amount });
       }
       if (specialsCount > 0 && addonFees.extra_envelope && addonFees.extra_envelope.type === "per_unit_per_set") {
@@ -676,7 +662,7 @@
         qty: qty,
         priceTable: priceTable,
         addonFees: addonFees,
-        specialNumbering: !!state.special_numbering,
+        specialNumbering: hasSpecialNumbering(state),
         specialsCount: specialsCount,
         holyDaysCount: holyDaysCount,
       });
@@ -707,7 +693,6 @@
       custom_verse: "",
       design: null,
       upload_name: "",
-      special_numbering: false,
       num_from: "",
       num_to: "",
       excluded: "",
@@ -725,7 +710,14 @@
       }
     });
 
-    var ctx = { config: config, priceTable: priceTable, addonFees: addonFees, state: state, refresh: refreshSummary };
+    var ctx = {
+      config: config,
+      priceTable: priceTable,
+      addonFees: addonFees,
+      state: state,
+      refresh: refreshSummary,
+      formatCurrency: function (n) { return totalFormatter.format(n); },
+    };
     var steps = buildSteps(ctx);
 
     function buildStepper() {

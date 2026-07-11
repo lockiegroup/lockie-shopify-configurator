@@ -13,6 +13,14 @@
  * at checkout" support ticket), so the fixture comparison exists to catch it
  * before it ships.
  *
+ * Also owns the numbering-range/exclusion match logic (countExcluded,
+ * numberingMatch, hasSpecialNumbering) — not mirrored in pricing.ts, since
+ * the Function never sees raw num_from/num_to/excluded (only the
+ * already-derived _special_numbering flag, per the Function input query
+ * complexity cap in CLAUDE.md). It lives here rather than in configurator.js
+ * so it gets the same fixture/unit-test coverage as the money math, since it
+ * now directly decides whether the £12 fee applies.
+ *
  * UMD wrapper: exposes window.LockieConfiguratorPricing in the browser,
  * module.exports under Node/CommonJS (for the test file) — no bundler needed
  * for a theme app extension asset.
@@ -71,5 +79,47 @@
     return round2(baseTotal + addonsTotal);
   }
 
-  return { round2: round2, findUnitPrice: findUnitPrice, computeLineTotal: computeLineTotal };
+  // Counts distinct excluded numbers that actually fall inside [from, to] —
+  // typos or out-of-range entries shouldn't silently count toward the £12
+  // special-numbering trigger or the range/quantity match.
+  function countExcluded(excludedStr, from, to) {
+    var seen = {};
+    (excludedStr || "").split(",").forEach(function (part) {
+      var n = parseInt(part.trim(), 10);
+      if (!isNaN(n) && n >= from && n <= to) seen[n] = true;
+    });
+    return Object.keys(seen).length;
+  }
+
+  // The numbered envelopes must match the set quantity exactly: range size
+  // minus valid exclusions has to equal qty, or fulfilment prints the wrong
+  // count of numbered envelopes for the boxes actually being sent.
+  function numberingMatch(state) {
+    var from = +state.num_from;
+    var to = +state.num_to;
+    if (!state.num_from || !state.num_to || isNaN(from) || isNaN(to) || to < from) return null;
+    var rangeCount = to - from + 1;
+    var excludedCount = countExcluded(state.excluded, from, to);
+    return { rangeCount: rangeCount, excludedCount: excludedCount, effectiveCount: rangeCount - excludedCount };
+  }
+
+  // Single source of truth for "does this line owe the £12 special-numbering
+  // fee". A clean sequential run (no valid exclusions) is standard and free;
+  // the fee applies the moment at least one in-range exclusion makes the run
+  // non-continuous. Both the wizard's live £12 summary line and (Stage 3) the
+  // _special_numbering line item property written at add-to-cart must derive
+  // from this same function so they can never disagree about when it's owed.
+  function hasSpecialNumbering(state) {
+    var match = numberingMatch(state);
+    return !!match && match.excludedCount > 0;
+  }
+
+  return {
+    round2: round2,
+    findUnitPrice: findUnitPrice,
+    computeLineTotal: computeLineTotal,
+    countExcluded: countExcluded,
+    numberingMatch: numberingMatch,
+    hasSpecialNumbering: hasSpecialNumbering,
+  };
 });
