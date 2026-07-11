@@ -3,10 +3,17 @@
 
   Reads custom.config / custom.price_table / custom.addon_fees off the
   product carrying this block and injects them as inline JSON — no AJAX
-  fetch needed, Liquid already has them at render time. Stage 0: empty
-  shell only (stepper + steps + summary), no step content or pricing yet.
-  Renders identically for any product; Tier 2 (Weekly) vs Tier 3 (Economy)
-  is entirely a difference in what these metafields contain.
+  fetch needed, Liquid already has them at render time. Renders identically
+  for any product; Tier 2 (Weekly) vs Tier 3 (Economy) is entirely a
+  difference in what these metafields contain.
+
+  shop.currency (not the price_table metafield's own "currency" field, which
+  is descriptive only) drives display formatting in configurator.js — see
+  the currency open item in CLAUDE.md.
+
+  pricing.js must load before configurator.js: it's the shared, tested
+  price-calc core (mirrors the Cart Transform Function's pricing.ts) that
+  the wizard's live total display reads from.
 {%- endcomment -%}
 
 {%- assign lc_config = block.settings.product.metafields.custom.config.value -%}
@@ -22,6 +29,7 @@
   data-config-id="lockie-configurator-config-{{ block.id }}"
   data-price-table-id="lockie-configurator-price-table-{{ block.id }}"
   data-addon-fees-id="lockie-configurator-addon-fees-{{ block.id }}"
+  data-shop-currency="{{ shop.currency }}"
   {{ block.shopify_attributes }}
 >
   <script type="application/json" id="lockie-configurator-config-{{ block.id }}">
@@ -61,6 +69,7 @@
   </div>
 </div>
 
+{{ 'pricing.js' | asset_url | script_tag }}
 {{ 'configurator.js' | asset_url | script_tag }}
 
 {% schema %}

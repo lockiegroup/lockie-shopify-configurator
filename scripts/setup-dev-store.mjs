@@ -153,12 +153,9 @@ const PRICE_TABLE_WEEKLY = JSON.parse(
   readFileSync(resolve(ROOT, "price-table-weekly.json"), "utf8")
 );
 
-const ADDON_FEES_WEEKLY = {
-  special_numbering: { label: "Special numbering",           amount: 12.00, type: "flat"             },
-  extra_envelope:    { label: "Additional special envelope", amount:  0.05, type: "per_unit_per_set" },
-  printed_extra:     { label: "Printed additional envelope", amount:  0.01, type: "per_unit_per_set" },
-  holyday_special:   { label: "Holyday special",             amount:  0.05, type: "per_unit_per_set" },
-};
+const ADDON_FEES_WEEKLY = JSON.parse(
+  readFileSync(resolve(ROOT, "addon-fees-weekly.json"), "utf8")
+);
 
 const CONFIG_WEEKLY = {
   min_quantity: 20,
@@ -192,24 +189,17 @@ const CONFIG_WEEKLY = {
 
 // Tier 3 — Economy. Only three real price bands (qty 24's old £2.70 WooCommerce
 // rate is legacy noise vs. the £2.78 either side of it — collapsed into one
-// 20–39 band; see CLAUDE.md).
-const PRICE_TABLE_ECONOMY = {
-  currency: "GBP",
-  rounding: "line_total_2dp",
-  bands: [
-    { from: 20,  to: 39,  unit: 2.78 },
-    { from: 40,  to: 99,  unit: 1.83 },
-    { from: 100, to: 300, unit: 1.75 },
-  ],
-};
+// 20–39 band; see CLAUDE.md). Same fee keys as Weekly, extra_envelope at 0.03.
+// These files are the single source of truth — also read by the Function's
+// and the wizard's own pricing tests via pricing-fixtures.json, so seeded
+// data and tested data can never drift apart.
+const PRICE_TABLE_ECONOMY = JSON.parse(
+  readFileSync(resolve(ROOT, "price-table-economy.json"), "utf8")
+);
 
-// Same fee keys as Weekly — extra_envelope overridden to 0.03.
-const ADDON_FEES_ECONOMY = {
-  special_numbering: { label: "Special numbering",           amount: 12.00, type: "flat"             },
-  extra_envelope:    { label: "Additional special envelope", amount:  0.03, type: "per_unit_per_set" },
-  printed_extra:     { label: "Printed additional envelope", amount:  0.01, type: "per_unit_per_set" },
-  holyday_special:   { label: "Holyday special",             amount:  0.05, type: "per_unit_per_set" },
-};
+const ADDON_FEES_ECONOMY = JSON.parse(
+  readFileSync(resolve(ROOT, "addon-fees-economy.json"), "utf8")
+);
 
 const CONFIG_ECONOMY = {
   min_quantity: 20,

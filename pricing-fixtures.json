@@ -1,0 +1,16 @@
+[
+  { "name": "Weekly base qty 20",  "tier": "weekly", "qty": 20,  "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 76.67 },
+  { "name": "Weekly base qty 52",  "tier": "weekly", "qty": 52,  "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 146.12 },
+  { "name": "Weekly base qty 100", "tier": "weekly", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 220.30 },
+  { "name": "Weekly base qty 200", "tier": "weekly", "qty": 200, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 427.42 },
+  { "name": "Weekly base qty 500", "tier": "weekly", "qty": 500, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 925.01 },
+
+  { "name": "Weekly qty 52 + special numbering", "tier": "weekly", "qty": 52, "specialNumbering": true, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 158.12 },
+  { "name": "Weekly qty 52 + special numbering + 2 specials (proven at checkout, £163.32)", "tier": "weekly", "qty": 52, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 163.32 },
+
+  { "name": "Economy qty 52 + special numbering + 2 specials (proven at checkout, $110.28)", "tier": "economy", "qty": 52, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 110.28 },
+  { "name": "Economy boundary qty 39 (top of 20-39 band)", "tier": "economy", "qty": 39, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 108.42 },
+  { "name": "Economy boundary qty 40 (bottom of 40-99 band)", "tier": "economy", "qty": 40, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 73.20 },
+  { "name": "Economy boundary qty 99 (top of 40-99 band)", "tier": "economy", "qty": 99, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 181.17 },
+  { "name": "Economy boundary qty 100 (bottom of 100-300 band)", "tier": "economy", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 175.00 }
+]

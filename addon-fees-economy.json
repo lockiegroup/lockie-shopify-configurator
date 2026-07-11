@@ -1,0 +1,6 @@
+{
+  "special_numbering": { "label": "Special numbering", "amount": 12.00, "type": "flat" },
+  "extra_envelope": { "label": "Additional special envelope", "amount": 0.03, "type": "per_unit_per_set" },
+  "printed_extra": { "label": "Printed additional envelope", "amount": 0.01, "type": "per_unit_per_set" },
+  "holyday_special": { "label": "Holyday special", "amount": 0.05, "type": "per_unit_per_set" }
+}

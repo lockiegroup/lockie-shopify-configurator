@@ -7,8 +7,15 @@
  * as inline JSON) instead of a hardcoded CONFIG object. Tier 2 (Weekly) vs
  * Tier 3 (Economy) is entirely a config-shape difference: locked options
  * render as static labels, uploads_enabled:false omits the upload choice,
- * holydays.max bounds the dropdown. No price calc or add-to-cart yet —
- * that's Stage 2/3.
+ * holydays.max bounds the dropdown.
+ *
+ * Stage 2: live price display, via the shared pricing.js (loaded before this
+ * file — see pricing.js's own header for why it's a separate, tested module
+ * rather than inlined here). Only qty, special_numbering, specials, and
+ * holydays affect price per the formula in CLAUDE.md; box/envelope/text
+ * colour, headings, verse/design, numbering range, start date, and notes do
+ * not, so refresh() is only wired to the inputs that actually move the total.
+ * Display only — add-to-cart wiring is Stage 3.
  *
  * NOTE: verse/design stock lists are not yet in a metafield (metafield-schema.md
  * proposes a shared custom.verses/custom.designs metaobject, not built yet) —
@@ -301,6 +308,7 @@
 
     el.querySelector("#lc-qty").addEventListener("change", function (e) {
       state.qty = +e.target.value;
+      ctx.refresh();
     });
 
     el.querySelectorAll(".lockie-configurator__swatch").forEach(function (s) {
@@ -500,6 +508,7 @@
           x.setAttribute("aria-pressed", (x.dataset.v === "yes") === state.special_numbering);
         });
         el.querySelector("#lc-num-wrap").style.display = state.special_numbering ? "block" : "none";
+        ctx.refresh();
       });
     });
     var nfrom = el.querySelector("#lc-nfrom");
@@ -518,6 +527,7 @@
         if (idx !== -1) state.specials.splice(idx, 1);
         else state.specials.push(s);
         c.setAttribute("aria-pressed", state.specials.indexOf(s) !== -1);
+        ctx.refresh();
       });
     });
   }
@@ -537,6 +547,7 @@
       "</div>";
     el.querySelector("#lc-hd").addEventListener("change", function (e) {
       state.holydays = +e.target.value;
+      ctx.refresh();
     });
   }
 
@@ -606,6 +617,84 @@
     var stepperEl = document.getElementById("lockie-configurator-stepper-" + blockId);
     var stepsEl = document.getElementById("lockie-configurator-steps-" + blockId);
     var addCartEl = document.getElementById("lockie-configurator-addcart-" + blockId);
+    var linesEl = document.getElementById("lockie-configurator-lines-" + blockId);
+    var totalEl = document.getElementById("lockie-configurator-total-" + blockId);
+    var unitNoteEl = document.getElementById("lockie-configurator-unit-note-" + blockId);
+
+    // shop.currency (not the price_table metafield's own "currency" field —
+    // that's descriptive only) drives display formatting. The dev store is
+    // USD; production will be GBP — see the open item in CLAUDE.md.
+    var shopCurrency = root.dataset.shopCurrency || "GBP";
+    var totalFormatter = new Intl.NumberFormat("en-GB", { style: "currency", currency: shopCurrency });
+    var unitFormatter = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: shopCurrency,
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    });
+
+    function refreshSummary() {
+      if (!window.LockieConfiguratorPricing || !priceTable || !addonFees) return;
+      var Pricing = window.LockieConfiguratorPricing;
+      var qty = state.qty;
+      var specialsCount = state.specials.length;
+      var holyDaysCount = state.holydays;
+
+      var unit;
+      try {
+        unit = Pricing.findUnitPrice(priceTable.bands, qty);
+      } catch (err) {
+        linesEl.innerHTML = "";
+        totalEl.textContent = "—";
+        unitNoteEl.textContent = "No price band covers " + qty + " — check the product's price table.";
+        return;
+      }
+
+      var lines = [{ label: qty + " sets × " + unitFormatter.format(unit), amount: Pricing.round2(unit * qty) }];
+
+      if (state.special_numbering && addonFees.special_numbering && addonFees.special_numbering.type === "flat") {
+        lines.push({ label: addonFees.special_numbering.label || "Special numbering", amount: addonFees.special_numbering.amount });
+      }
+      if (specialsCount > 0 && addonFees.extra_envelope && addonFees.extra_envelope.type === "per_unit_per_set") {
+        lines.push({
+          label: specialsCount + " special env. × " + qty + " sets",
+          amount: Pricing.round2(addonFees.extra_envelope.amount * specialsCount * qty),
+        });
+      }
+      if (holyDaysCount > 0 && addonFees.holyday_special && addonFees.holyday_special.type === "per_unit_per_set") {
+        lines.push({
+          label: holyDaysCount + " holyday env. × " + qty + " sets",
+          amount: Pricing.round2(addonFees.holyday_special.amount * holyDaysCount * qty),
+        });
+      }
+
+      // The Total shown is always Pricing.computeLineTotal(...)'s own return
+      // value, never a re-derived sum of the display lines above — those two
+      // must be mathematically identical, but only one of them is the
+      // fixture-tested function, so that's the one the customer sees.
+      var total = Pricing.computeLineTotal({
+        qty: qty,
+        priceTable: priceTable,
+        addonFees: addonFees,
+        specialNumbering: !!state.special_numbering,
+        specialsCount: specialsCount,
+        holyDaysCount: holyDaysCount,
+      });
+
+      linesEl.innerHTML = lines
+        .map(function (l) {
+          return (
+            '<div class="lockie-configurator__lineitem"><span>' +
+            escapeHtml(l.label) +
+            "</span><span>" +
+            totalFormatter.format(l.amount) +
+            "</span></div>"
+          );
+        })
+        .join("");
+      totalEl.textContent = totalFormatter.format(total);
+      unitNoteEl.textContent = "Unit price " + unitFormatter.format(unit) + " at " + qty + " sets.";
+    }
 
     var state = {
       step: 0,
@@ -636,7 +725,7 @@
       }
     });
 
-    var ctx = { config: config, priceTable: priceTable, addonFees: addonFees, state: state };
+    var ctx = { config: config, priceTable: priceTable, addonFees: addonFees, state: state, refresh: refreshSummary };
     var steps = buildSteps(ctx);
 
     function buildStepper() {
@@ -708,6 +797,7 @@
 
     function sync() {
       showStep();
+      refreshSummary();
     }
 
     addCartEl.addEventListener("click", function () {

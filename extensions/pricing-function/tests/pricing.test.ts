@@ -2,61 +2,51 @@ import { describe, it, expect } from "vitest";
 import { computeLineTotal } from "../src/pricing";
 import type { PriceTable, AddonFees } from "../src/pricing";
 import weeklyPriceTableJson from "../../../price-table-weekly.json";
+import economyPriceTableJson from "../../../price-table-economy.json";
+import weeklyAddonFeesJson from "../../../addon-fees-weekly.json";
+import economyAddonFeesJson from "../../../addon-fees-economy.json";
+import fixtures from "../../../pricing-fixtures.json";
 
 const WEEKLY_PRICE_TABLE = weeklyPriceTableJson as PriceTable;
+const ECONOMY_PRICE_TABLE = economyPriceTableJson as PriceTable;
+const WEEKLY_ADDON_FEES = weeklyAddonFeesJson as AddonFees;
+const ECONOMY_ADDON_FEES = economyAddonFeesJson as AddonFees;
 
-const WEEKLY_ADDON_FEES: AddonFees = {
-  special_numbering: { label: "Special numbering", amount: 12.00, type: "flat" },
-  extra_envelope:    { label: "Additional special envelope", amount: 0.05, type: "per_unit_per_set" },
-  printed_extra:     { label: "Printed additional envelope", amount: 0.01, type: "per_unit_per_set" },
-  holyday_special:   { label: "Holyday special", amount: 0.05, type: "per_unit_per_set" },
+const TABLES_BY_TIER: Record<string, { priceTable: PriceTable; addonFees: AddonFees }> = {
+  weekly: { priceTable: WEEKLY_PRICE_TABLE, addonFees: WEEKLY_ADDON_FEES },
+  economy: { priceTable: ECONOMY_PRICE_TABLE, addonFees: ECONOMY_ADDON_FEES },
 };
 
-function base(qty: number) {
-  return computeLineTotal({
-    qty,
-    priceTable: WEEKLY_PRICE_TABLE,
-    addonFees: WEEKLY_ADDON_FEES,
-    specialNumbering: false,
-    specialsCount: 0,
-    holyDaysCount: 0,
-  });
-}
-
-describe("Weekly base totals — no add-ons (matches WooCommerce verified values)", () => {
-  it("qty 20  → £76.67",  () => expect(base(20)).toBe(76.67));
-  it("qty 52  → £146.12", () => expect(base(52)).toBe(146.12));
-  it("qty 100 → £220.30", () => expect(base(100)).toBe(220.30));
-  it("qty 200 → £427.42", () => expect(base(200)).toBe(427.42));
-  it("qty 500 → £925.01", () => expect(base(500)).toBe(925.01));
-});
-
-describe("Weekly pricing — add-on combinations", () => {
-  it("52 sets + special numbering (£12 flat) → £158.12", () => {
-    expect(
-      computeLineTotal({
-        qty: 52,
-        priceTable: WEEKLY_PRICE_TABLE,
-        addonFees: WEEKLY_ADDON_FEES,
-        specialNumbering: true,
-        specialsCount: 0,
-        holyDaysCount: 0,
-      })
-    ).toBe(158.12);
-  });
-
-  it("52 sets + special numbering + 2 specials (2 × £0.05 × 52 = £5.20) → £163.32", () => {
-    expect(
-      computeLineTotal({
-        qty: 52,
-        priceTable: WEEKLY_PRICE_TABLE,
-        addonFees: WEEKLY_ADDON_FEES,
-        specialNumbering: true,
-        specialsCount: 2,
-        holyDaysCount: 0,
-      })
-    ).toBe(163.32);
-  });
+// These fixtures are the single source of truth for expected totals, shared
+// with the wizard's own pricing.js test (extensions/configurator-wizard/tests).
+// Both implementations must produce the exact same numbers for the exact same
+// inputs, or the wizard's displayed total can drift from what checkout
+// actually charges — a case in this same file caught that class of bug once
+// already (the qty-52 rounding-drift fix documented in CLAUDE.md).
+describe("Shared pricing fixtures (pricing-fixtures.json)", () => {
+  for (const fixture of fixtures as Array<{
+    name: string;
+    tier: string;
+    qty: number;
+    specialNumbering: boolean;
+    specialsCount: number;
+    holyDaysCount: number;
+    expectedTotal: number;
+  }>) {
+    it(fixture.name, () => {
+      const { priceTable, addonFees } = TABLES_BY_TIER[fixture.tier];
+      expect(
+        computeLineTotal({
+          qty: fixture.qty,
+          priceTable,
+          addonFees,
+          specialNumbering: fixture.specialNumbering,
+          specialsCount: fixture.specialsCount,
+          holyDaysCount: fixture.holyDaysCount,
+        })
+      ).toBe(fixture.expectedTotal);
+    });
+  }
 });
 
 describe("Edge cases", () => {
