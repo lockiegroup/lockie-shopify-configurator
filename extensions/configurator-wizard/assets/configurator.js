@@ -1,12 +1,41 @@
 /**
- * Lockie Church configurator wizard — bootstrap.
+ * Lockie Church configurator wizard.
  *
- * Stage 0: read the product's custom.config/price_table/addon_fees metafields
- * (injected server-side by the block as inline JSON, no extra network call)
- * and expose them for verification. Stage 1 replaces the stub below with the
- * actual step renderer.
+ * Stage 1: step rendering, navigation, and validation, ported from
+ * weekly-configurator.html — but every renderer reads its options from the
+ * product's own custom.config metafield (injected server-side by the block
+ * as inline JSON) instead of a hardcoded CONFIG object. Tier 2 (Weekly) vs
+ * Tier 3 (Economy) is entirely a config-shape difference: locked options
+ * render as static labels, uploads_enabled:false omits the upload choice,
+ * holydays.max bounds the dropdown. No price calc or add-to-cart yet —
+ * that's Stage 2/3.
+ *
+ * NOTE: verse/design stock lists are not yet in a metafield (metafield-schema.md
+ * proposes a shared custom.verses/custom.designs metaobject, not built yet) —
+ * ported from the prototype as a temporary hardcoded list pending that work.
  */
 (function () {
+  var WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  // Temporary — see NOTE above. Identical across Weekly/Economy in the prototype.
+  var VERSES = [
+    "V1 — All things come from You, O Lord",
+    "V2 — Give back some of God's gifts to God",
+    "V3 — The Lord blesses His people with peace",
+    "V4 — In Thanksgiving to God",
+    "V5 — Trust in the Lord with all your heart",
+    "V8 — Our gift to God and His Church",
+    "V18 — My Weekly Offering",
+    "V20 — Our weekly Offering to God",
+  ];
+  var DESIGNS = ["C1", "C2", "C3", "C5", "D1", "D5", "D29 (Salvation Army)", "D30 (CofE)"];
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   function readJSON(id) {
     var el = document.getElementById(id);
     if (!el) return null;
@@ -18,18 +47,602 @@
     }
   }
 
-  function init(root) {
-    var data = {
-      config: readJSON(root.dataset.configId),
-      priceTable: readJSON(root.dataset.priceTableId),
-      addonFees: readJSON(root.dataset.addonFeesId),
-    };
-
-    window.__lockieConfigurator = window.__lockieConfigurator || {};
-    window.__lockieConfigurator[root.dataset.blockId] = data;
-
-    console.log("[lockie-configurator] block " + root.dataset.blockId + " loaded metafields:", data);
+  function maxQtyFromPriceTable(priceTable, fallback) {
+    if (!priceTable || !Array.isArray(priceTable.bands) || priceTable.bands.length === 0) {
+      return fallback;
+    }
+    return priceTable.bands[priceTable.bands.length - 1].to;
   }
 
-  document.querySelectorAll("[data-lockie-configurator]").forEach(init);
+  /* ========================= STEP DEFINITIONS ========================= */
+  // Static UI copy (title/hint) + which config path gates whether the step
+  // exists at all + a render/validate pair. Order here is the canonical
+  // step order; steps whose config node is missing or enabled:false are
+  // skipped entirely (this is how a narrower future tier would drop steps).
+
+  function buildSteps(ctx) {
+    var config = ctx.config;
+    var steps = config.steps || {};
+    var defs = [];
+
+    if (steps.options && steps.options.enabled) {
+      defs.push({
+        key: "options",
+        title: "Quantity & Options",
+        hint: "Choose how many sets and your envelope, ink and box options.",
+        render: renderOptions,
+        validate: function (ctx) {
+          var opts = ctx.config.steps.options;
+          if (opts.box_colour && !opts.box_colour.locked && !ctx.state.box_colour) {
+            return "Please choose a box colour.";
+          }
+          if (opts.envelope_colour && !opts.envelope_colour.locked && !ctx.state.envelope_colour) {
+            return "Please choose an envelope colour.";
+          }
+          return "";
+        },
+      });
+    }
+
+    if (steps.headings && steps.headings.enabled) {
+      defs.push({
+        key: "headings",
+        title: "Headings & Custom Print",
+        hint: "Enter the headings to be printed on your envelopes.",
+        render: renderHeadings,
+        validate: function (ctx) {
+          var lines = ctx.config.steps.headings.lines || [];
+          if (lines.length && !ctx.state.headings[lines[0]]) {
+            return "Please enter at least the " + lines[0] + ".";
+          }
+          return "";
+        },
+      });
+    }
+
+    if (steps.design && steps.design.enabled) {
+      defs.push({
+        key: "design",
+        title: "Image Design & Verse",
+        hint: "Choose a verse and a design, or supply your own.",
+        render: renderDesign,
+        validate: function () {
+          return "";
+        },
+      });
+    }
+
+    if (steps.numbering && steps.numbering.enabled) {
+      defs.push({
+        key: "numbering",
+        title: "Numbering & Specials",
+        hint: "Set your numbering range and any additional collection envelopes.",
+        render: renderNumbering,
+        validate: function (ctx) {
+          var s = ctx.state;
+          if (s.special_numbering) {
+            if (!s.num_from || !s.num_to) return "Enter the from and to numbers for your set.";
+            if (+s.num_from < 1) return "Start number must be at least 1.";
+            if (+s.num_to < +s.num_from) return "End number must be greater than the start.";
+          }
+          return "";
+        },
+      });
+    }
+
+    if (steps.holydays && steps.holydays.enabled) {
+      defs.push({
+        key: "holydays",
+        title: "Holyday & Diocese Specials",
+        hint: "Add diocese holyday specials if required.",
+        render: renderHolydays,
+        validate: function () {
+          return "";
+        },
+      });
+    }
+
+    if (steps.start_date && steps.start_date.enabled) {
+      defs.push({
+        key: "start_date",
+        title: "Start Date",
+        hint: "Select the " + (steps.start_date.weekday_only || "") + " your envelope sets should begin.",
+        render: renderStart,
+        validate: function (ctx) {
+          var s = ctx.state;
+          if (!s.start_date) return "Please choose a start date.";
+          var weekdayOnly = ctx.config.steps.start_date.weekday_only;
+          if (weekdayOnly) {
+            var expected = WEEKDAYS.indexOf(weekdayOnly);
+            var d = new Date(s.start_date);
+            if (expected >= 0 && d.getDay() !== expected) {
+              return "That's not a " + weekdayOnly + " — please pick a " + weekdayOnly + ".";
+            }
+          }
+          return "";
+        },
+      });
+    }
+
+    if (steps.notes && steps.notes.enabled) {
+      defs.push({
+        key: "notes",
+        title: "Additional Order Details",
+        hint: "Anything else we should know about your order.",
+        render: renderNotes,
+        validate: function () {
+          return "";
+        },
+      });
+    }
+
+    return defs;
+  }
+
+  /* ========================= RENDERERS ========================= */
+  // Each renderer takes (el, ctx) where ctx = { config, state, refresh }.
+
+  function renderOptions(el, ctx) {
+    var config = ctx.config;
+    var state = ctx.state;
+    var minQty = config.min_quantity || 1;
+    var maxQty = maxQtyFromPriceTable(ctx.priceTable, minQty + 280);
+
+    var qtyOpts = "";
+    for (var q = minQty; q <= maxQty; q++) {
+      qtyOpts += '<option value="' + q + '"' + (q === state.qty ? " selected" : "") + ">" + q + "</option>";
+    }
+
+    var html =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Quantity <span class="lockie-configurator__req">*</span></label>' +
+      '<select id="lc-qty">' + qtyOpts + "</select>" +
+      '<div class="lockie-configurator__note">Minimum order ' + minQty + " sets.</div>" +
+      "</div>";
+    el.innerHTML = html;
+
+    var optionFields = [
+      { key: "box_colour", label: "Box Colour", required: true },
+      { key: "envelope_colour", label: "Envelope Colour", required: true },
+      { key: "text_colour", label: "Text Colour", required: false },
+    ];
+
+    optionFields.forEach(function (field) {
+      var opt = config.steps.options[field.key];
+      if (!opt) return;
+
+      var wrap = document.createElement("div");
+      wrap.className = "lockie-configurator__field";
+      var inner =
+        '<label class="lockie-configurator__label">' +
+        escapeHtml(field.label) +
+        (field.required ? ' <span class="lockie-configurator__req">*</span>' : "") +
+        "</label>";
+
+      if (opt.locked) {
+        inner += '<span class="lockie-configurator__locked-val">' + escapeHtml(opt.values[0]) + " · fixed</span>";
+      } else {
+        inner += '<div class="lockie-configurator__swatches" data-group="' + field.key + '">';
+        (opt.values || []).forEach(function (v) {
+          var oos = (opt.out_of_stock || []).indexOf(v) !== -1;
+          inner +=
+            '<span class="lockie-configurator__swatch" role="button" data-val="' +
+            escapeHtml(v) +
+            '" aria-pressed="' +
+            (state[field.key] === v) +
+            '"' +
+            (oos ? ' aria-disabled="true"' : "") +
+            ">" +
+            escapeHtml(v) +
+            (oos ? '<span class="lockie-configurator__oos">out of stock</span>' : "") +
+            "</span>";
+        });
+        inner += "</div>";
+      }
+      wrap.innerHTML = inner;
+      el.appendChild(wrap);
+    });
+
+    el.querySelector("#lc-qty").addEventListener("change", function (e) {
+      state.qty = +e.target.value;
+    });
+
+    el.querySelectorAll(".lockie-configurator__swatch").forEach(function (s) {
+      s.addEventListener("click", function () {
+        if (s.getAttribute("aria-disabled") === "true") return;
+        var group = s.closest(".lockie-configurator__swatches").dataset.group;
+        state[group] = s.dataset.val;
+        s.closest(".lockie-configurator__swatches")
+          .querySelectorAll(".lockie-configurator__swatch")
+          .forEach(function (x) {
+            x.setAttribute("aria-pressed", x.dataset.val === state[group]);
+          });
+      });
+    });
+  }
+
+  function renderHeadings(el, ctx) {
+    var lines = ctx.config.steps.headings.lines || [];
+    var state = ctx.state;
+    el.innerHTML = lines
+      .map(function (h, i) {
+        return (
+          '<div class="lockie-configurator__field">' +
+          '<label class="lockie-configurator__label">' +
+          escapeHtml(h) +
+          (i === 0 ? ' <span class="lockie-configurator__req">*</span>' : "") +
+          "</label>" +
+          '<input type="text" data-h="' +
+          escapeHtml(h) +
+          '" value="' +
+          escapeHtml(state.headings[h] || "") +
+          '" placeholder="' +
+          escapeHtml(h) +
+          '">' +
+          "</div>"
+        );
+      })
+      .join("");
+    el.querySelectorAll("input[data-h]").forEach(function (inp) {
+      inp.addEventListener("input", function (e) {
+        state.headings[e.target.dataset.h] = e.target.value;
+      });
+    });
+  }
+
+  function renderDesign(el, ctx) {
+    var config = ctx.config;
+    var state = ctx.state;
+    var designConfig = config.steps.design;
+    var verseEnabled = designConfig.verse && designConfig.verse.enabled;
+    var verseAllowCustom = designConfig.verse && designConfig.verse.allow_custom;
+    var designEnabled = designConfig.design && designConfig.design.enabled;
+    var uploadAllowed = config.uploads_enabled && designConfig.design && designConfig.design.allow_upload;
+    var designAllowCustom = designConfig.design && designConfig.design.allow_custom;
+
+    var html = "";
+
+    if (verseEnabled) {
+      html +=
+        '<div class="lockie-configurator__field">' +
+        '<label class="lockie-configurator__label">Verse</label>' +
+        '<select id="lc-verse"><option value="">No verse</option>' +
+        VERSES.map(function (v) {
+          return '<option' + (state.verse === v ? " selected" : "") + ">" + escapeHtml(v) + "</option>";
+        }).join("") +
+        (verseAllowCustom ? '<option value="__custom">Add a custom verse…</option>' : "") +
+        "</select>";
+      if (verseAllowCustom) {
+        html +=
+          '<div class="lockie-configurator__field" id="lc-cv-wrap" style="margin-top:10px;display:' +
+          (state.verse === "__custom" ? "block" : "none") +
+          '">' +
+          '<input type="text" id="lc-cverse" placeholder="Type your custom verse" value="' +
+          escapeHtml(state.custom_verse) +
+          '">' +
+          "</div>";
+      }
+      html += "</div>";
+    }
+
+    if (designEnabled) {
+      html +=
+        '<div class="lockie-configurator__field">' +
+        '<label class="lockie-configurator__label">Design</label>' +
+        '<select id="lc-design"><option value="">No design</option>' +
+        DESIGNS.map(function (d) {
+          return '<option' + (state.design === d ? " selected" : "") + ">" + escapeHtml(d) + "</option>";
+        }).join("") +
+        (uploadAllowed ? '<option value="__upload">Upload my own image…</option>' : "") +
+        "</select>";
+      if (uploadAllowed) {
+        html +=
+          '<div class="lockie-configurator__field" id="lc-up-wrap" style="margin-top:10px;display:' +
+          (state.design === "__upload" ? "block" : "none") +
+          '">' +
+          '<input type="text" id="lc-upload" placeholder="(prototype) type a filename e.g. our-logo.pdf" value="' +
+          escapeHtml(state.upload_name) +
+          '">' +
+          '<div class="lockie-configurator__note">Accepted: pdf, png, ai, jpg.</div>' +
+          "</div>";
+      }
+      html += "</div>";
+    }
+
+    el.innerHTML = html;
+
+    var vs = el.querySelector("#lc-verse");
+    if (vs) {
+      vs.addEventListener("change", function (e) {
+        state.verse = e.target.value;
+        var wrap = el.querySelector("#lc-cv-wrap");
+        if (wrap) wrap.style.display = e.target.value === "__custom" ? "block" : "none";
+      });
+    }
+    var ds = el.querySelector("#lc-design");
+    if (ds) {
+      ds.addEventListener("change", function (e) {
+        state.design = e.target.value;
+        var wrap = el.querySelector("#lc-up-wrap");
+        if (wrap) wrap.style.display = e.target.value === "__upload" ? "block" : "none";
+      });
+    }
+    var cv = el.querySelector("#lc-cverse");
+    if (cv) cv.addEventListener("input", function (e) { state.custom_verse = e.target.value; });
+    var up = el.querySelector("#lc-upload");
+    if (up) up.addEventListener("input", function (e) { state.upload_name = e.target.value; });
+  }
+
+  function renderNumbering(el, ctx) {
+    var config = ctx.config;
+    var state = ctx.state;
+    var specials = config.steps.numbering.specials || [];
+
+    el.innerHTML =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Special numbering required?</label>' +
+      '<div class="lockie-configurator__toggle-row" id="lc-sn-row">' +
+      '<span class="lockie-configurator__chip" data-v="no" aria-pressed="' +
+      !state.special_numbering +
+      '">No</span>' +
+      '<span class="lockie-configurator__chip" data-v="yes" aria-pressed="' +
+      state.special_numbering +
+      '">Yes (+£12)</span>' +
+      "</div>" +
+      '<div id="lc-num-wrap" style="display:' +
+      (state.special_numbering ? "block" : "none") +
+      '">' +
+      '<div class="lockie-configurator__row2">' +
+      '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Numbered from</label>' +
+      '<input type="number" id="lc-nfrom" min="1" value="' +
+      escapeHtml(state.num_from) +
+      '"></div>' +
+      '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Numbered to</label>' +
+      '<input type="number" id="lc-nto" min="1" value="' +
+      escapeHtml(state.num_to) +
+      '"></div>' +
+      "</div>" +
+      '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Excluded numbers</label>' +
+      '<input type="text" id="lc-nexcl" placeholder="e.g. 13, 44, 99" value="' +
+      escapeHtml(state.excluded) +
+      '"><div class="lockie-configurator__note">Numbers to skip in the set.</div></div>' +
+      "</div>" +
+      "</div>" +
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Additional special collection envelopes</label>' +
+      '<div class="lockie-configurator__note" style="margin-bottom:8px">Inserted at the back of each set.</div>' +
+      '<div class="lockie-configurator__toggle-row">' +
+      specials
+        .map(function (s) {
+          return (
+            '<span class="lockie-configurator__chip lc-sp" data-s="' +
+            escapeHtml(s) +
+            '" aria-pressed="' +
+            (state.specials.indexOf(s) !== -1) +
+            '">' +
+            escapeHtml(s) +
+            "</span>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      "</div>";
+
+    el.querySelectorAll("#lc-sn-row .lockie-configurator__chip").forEach(function (c) {
+      c.addEventListener("click", function () {
+        state.special_numbering = c.dataset.v === "yes";
+        el.querySelectorAll("#lc-sn-row .lockie-configurator__chip").forEach(function (x) {
+          x.setAttribute("aria-pressed", (x.dataset.v === "yes") === state.special_numbering);
+        });
+        el.querySelector("#lc-num-wrap").style.display = state.special_numbering ? "block" : "none";
+      });
+    });
+    var nfrom = el.querySelector("#lc-nfrom");
+    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; });
+    var nto = el.querySelector("#lc-nto");
+    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; });
+    var nexcl = el.querySelector("#lc-nexcl");
+    if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; });
+
+    el.querySelectorAll(".lc-sp").forEach(function (c) {
+      c.addEventListener("click", function () {
+        var s = c.dataset.s;
+        var idx = state.specials.indexOf(s);
+        if (idx !== -1) state.specials.splice(idx, 1);
+        else state.specials.push(s);
+        c.setAttribute("aria-pressed", state.specials.indexOf(s) !== -1);
+      });
+    });
+  }
+
+  function renderHolydays(el, ctx) {
+    var max = ctx.config.steps.holydays.max || 0;
+    var state = ctx.state;
+    var opts = '<option value="0">No holyday specials</option>';
+    for (var i = 1; i <= max; i++) {
+      opts += '<option value="' + i + '"' + (state.holydays === i ? " selected" : "") + ">+" + i + " special" + (i > 1 ? "s" : "") + "</option>";
+    }
+    el.innerHTML =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Number of holyday specials</label>' +
+      '<select id="lc-hd">' + opts + "</select>" +
+      '<div class="lockie-configurator__note">Upload your holyday dates template in production.</div>' +
+      "</div>";
+    el.querySelector("#lc-hd").addEventListener("change", function (e) {
+      state.holydays = +e.target.value;
+    });
+  }
+
+  function renderStart(el, ctx) {
+    var state = ctx.state;
+    var weekdayOnly = ctx.config.steps.start_date.weekday_only;
+    el.innerHTML =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Start Date <span class="lockie-configurator__req">*</span></label>' +
+      '<input type="date" id="lc-sd" value="' +
+      escapeHtml(state.start_date) +
+      '">' +
+      (weekdayOnly ? '<div class="lockie-configurator__note">Must be a ' + escapeHtml(weekdayOnly) + ".</div>" : "") +
+      '<div class="lockie-configurator__err" id="lc-sd-err"></div>' +
+      "</div>";
+    el.querySelector("#lc-sd").addEventListener("change", function (e) {
+      state.start_date = e.target.value;
+      var errEl = el.querySelector("#lc-sd-err");
+      if (weekdayOnly) {
+        var expected = WEEKDAYS.indexOf(weekdayOnly);
+        var d = new Date(e.target.value);
+        errEl.textContent = e.target.value && expected >= 0 && d.getDay() !== expected
+          ? "That's not a " + weekdayOnly + " — please pick a " + weekdayOnly + "."
+          : "";
+      }
+    });
+  }
+
+  function renderNotes(el, ctx) {
+    var state = ctx.state;
+    el.innerHTML =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Additional order details</label>' +
+      '<textarea id="lc-notes" placeholder="Optional notes for our production team">' +
+      escapeHtml(state.notes) +
+      "</textarea>" +
+      "</div>";
+    el.querySelector("#lc-notes").addEventListener("input", function (e) {
+      state.notes = e.target.value;
+    });
+  }
+
+  /* ========================= WIZARD SHELL ========================= */
+
+  function createWizard(root) {
+    var blockId = root.dataset.blockId;
+    var config = readJSON(root.dataset.configId);
+    var priceTable = readJSON(root.dataset.priceTableId);
+    var addonFees = readJSON(root.dataset.addonFeesId);
+
+    if (!config || !config.steps) {
+      console.error("[lockie-configurator] block " + blockId + " has no usable config metafield — nothing to render.");
+      return;
+    }
+
+    var stepperEl = document.getElementById("lockie-configurator-stepper-" + blockId);
+    var stepsEl = document.getElementById("lockie-configurator-steps-" + blockId);
+    var addCartEl = document.getElementById("lockie-configurator-addcart-" + blockId);
+
+    var state = {
+      step: 0,
+      qty: config.min_quantity || 1,
+      box_colour: null,
+      envelope_colour: null,
+      text_colour: null,
+      headings: {},
+      verse: null,
+      custom_verse: "",
+      design: null,
+      upload_name: "",
+      special_numbering: false,
+      num_from: "",
+      num_to: "",
+      excluded: "",
+      specials: [],
+      holydays: 0,
+      start_date: "",
+      notes: "",
+    };
+
+    // Locked single-value options are pre-set — nothing for the customer to pick.
+    ["box_colour", "envelope_colour", "text_colour"].forEach(function (key) {
+      var opt = config.steps.options && config.steps.options[key];
+      if (opt && opt.locked && opt.values && opt.values.length) {
+        state[key] = opt.values[0];
+      }
+    });
+
+    var ctx = { config: config, priceTable: priceTable, addonFees: addonFees, state: state };
+    var steps = buildSteps(ctx);
+
+    function buildStepper() {
+      stepperEl.innerHTML = steps
+        .map(function (st, i) {
+          var cls = i === state.step ? "is-active" : i < state.step ? "is-done" : "";
+          return (
+            '<li class="' +
+            cls +
+            '"><span class="lockie-configurator__step-n">' +
+            String(i + 1).padStart(2, "0") +
+            "</span>" +
+            escapeHtml(st.title) +
+            "</li>"
+          );
+        })
+        .join("");
+    }
+
+    function showStep() {
+      stepsEl.innerHTML = "";
+      var st = steps[state.step];
+      var wrap = document.createElement("div");
+      wrap.className = "lockie-configurator__step";
+      wrap.innerHTML =
+        "<h2>" +
+        escapeHtml(st.title) +
+        '</h2><p class="lockie-configurator__hint">' +
+        escapeHtml(st.hint) +
+        '</p><div class="lockie-configurator__step-body"></div>' +
+        '<div class="lockie-configurator__err" id="lc-step-err"></div>' +
+        '<div class="lockie-configurator__btns">' +
+        '<button type="button" class="lockie-configurator__nav-btn lockie-configurator__nav-btn--ghost" id="lc-back"' +
+        (state.step === 0 ? " disabled" : "") +
+        ">Back</button>" +
+        '<button type="button" class="lockie-configurator__nav-btn" id="lc-next">' +
+        (state.step === steps.length - 1 ? "Finish" : "Next") +
+        "</button>" +
+        "</div>";
+      stepsEl.appendChild(wrap);
+      st.render(wrap.querySelector(".lockie-configurator__step-body"), ctx);
+
+      wrap.querySelector("#lc-back").addEventListener("click", function () {
+        if (state.step > 0) {
+          state.step--;
+          sync();
+        }
+      });
+      wrap.querySelector("#lc-next").addEventListener("click", function () {
+        var msg = st.validate(ctx);
+        var errEl = wrap.querySelector("#lc-step-err");
+        if (msg) {
+          errEl.style.color = "";
+          errEl.textContent = msg;
+          return;
+        }
+        if (state.step < steps.length - 1) {
+          state.step++;
+          sync();
+        } else {
+          addCartEl.disabled = false;
+          errEl.style.color = "var(--lc-green)";
+          errEl.textContent = "All steps complete — you can add to basket.";
+        }
+      });
+
+      buildStepper();
+    }
+
+    function sync() {
+      showStep();
+    }
+
+    addCartEl.addEventListener("click", function () {
+      // Stage 3 wires the real /cart/add.js call. For now, just prove the
+      // button is reachable once every step has validated cleanly.
+      console.log("[lockie-configurator] block " + blockId + " ready to add to cart with state:", state);
+    });
+
+    sync();
+
+    window.__lockieConfigurator = window.__lockieConfigurator || {};
+    window.__lockieConfigurator[blockId] = { config: config, priceTable: priceTable, addonFees: addonFees, state: state };
+  }
+
+  document.querySelectorAll("[data-lockie-configurator]").forEach(createWizard);
 })();
