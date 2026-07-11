@@ -54,6 +54,58 @@
     return priceTable.bands[priceTable.bands.length - 1].to;
   }
 
+  // Counts distinct excluded numbers that actually fall inside [from, to] —
+  // typos or out-of-range entries shouldn't silently count toward the match.
+  function countExcluded(excludedStr, from, to) {
+    var seen = {};
+    (excludedStr || "").split(",").forEach(function (part) {
+      var n = parseInt(part.trim(), 10);
+      if (!isNaN(n) && n >= from && n <= to) seen[n] = true;
+    });
+    return Object.keys(seen).length;
+  }
+
+  // The numbered envelopes must match the set quantity exactly: range size
+  // minus valid exclusions has to equal qty, or fulfilment prints the wrong
+  // count of numbered envelopes for the boxes actually being sent.
+  function numberingMatch(state) {
+    var from = +state.num_from;
+    var to = +state.num_to;
+    if (!state.num_from || !state.num_to || isNaN(from) || isNaN(to) || to < from) return null;
+    var rangeCount = to - from + 1;
+    var excludedCount = countExcluded(state.excluded, from, to);
+    return { rangeCount: rangeCount, excludedCount: excludedCount, effectiveCount: rangeCount - excludedCount };
+  }
+
+  function numberingMatchMessage(match, qty) {
+    if (!match) return { text: "Enter a numbering range to see how it matches your set count.", ok: false };
+    var diff = match.effectiveCount - qty;
+    var base = match.rangeCount + " number" + (match.rangeCount === 1 ? "" : "s") + " (range) minus " +
+      match.excludedCount + " excluded = " + match.effectiveCount + " numbered envelope" + (match.effectiveCount === 1 ? "" : "s") +
+      " for " + qty + " set" + (qty === 1 ? "" : "s") + ".";
+    if (diff === 0) return { text: base + " Matches ✓", ok: true };
+    if (diff > 0) return { text: base + " Exclude " + diff + " more number" + (diff === 1 ? "" : "s") + " to match.", ok: false };
+    return { text: base + " Add " + (-diff) + " more number" + (-diff === 1 ? "" : "s") + " back (widen the range or exclude fewer).", ok: false };
+  }
+
+  // Finds the next date (on/after `from`) that falls on `targetDow` (0=Sunday
+  // ... 6=Saturday), used to anchor the date input's step grid to the right
+  // weekday — see renderStart.
+  function nextWeekday(from, targetDow) {
+    var d = new Date(from);
+    d.setHours(0, 0, 0, 0);
+    var add = (targetDow - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + add);
+    return d;
+  }
+
+  function toDateInputValue(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+
   /* ========================= STEP DEFINITIONS ========================= */
   // Static UI copy (title/hint) + which config path gates whether the step
   // exists at all + a render/validate pair. Order here is the canonical
@@ -124,6 +176,10 @@
             if (!s.num_from || !s.num_to) return "Enter the from and to numbers for your set.";
             if (+s.num_from < 1) return "Start number must be at least 1.";
             if (+s.num_to < +s.num_from) return "End number must be greater than the start.";
+            var match = numberingMatch(s);
+            if (!match || match.effectiveCount !== s.qty) {
+              return numberingMatchMessage(match, s.qty).text;
+            }
           }
           return "";
         },
@@ -405,7 +461,8 @@
       '<div class="lockie-configurator__field"><label class="lockie-configurator__label">Excluded numbers</label>' +
       '<input type="text" id="lc-nexcl" placeholder="e.g. 13, 44, 99" value="' +
       escapeHtml(state.excluded) +
-      '"><div class="lockie-configurator__note">Numbers to skip in the set.</div></div>' +
+      '"><div class="lockie-configurator__note">Numbers to skip in the set.</div>' +
+      '<div class="lockie-configurator__note" id="lc-num-match"></div></div>' +
       "</div>" +
       "</div>" +
       '<div class="lockie-configurator__field">' +
@@ -428,6 +485,14 @@
       "</div>" +
       "</div>";
 
+    function updateMatch() {
+      var matchEl = el.querySelector("#lc-num-match");
+      if (!matchEl) return;
+      var msg = numberingMatchMessage(numberingMatch(state), state.qty);
+      matchEl.textContent = msg.text;
+      matchEl.style.color = msg.ok ? "var(--lc-green)" : "var(--lc-accent)";
+    }
+
     el.querySelectorAll("#lc-sn-row .lockie-configurator__chip").forEach(function (c) {
       c.addEventListener("click", function () {
         state.special_numbering = c.dataset.v === "yes";
@@ -438,11 +503,13 @@
       });
     });
     var nfrom = el.querySelector("#lc-nfrom");
-    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; });
+    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; updateMatch(); });
     var nto = el.querySelector("#lc-nto");
-    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; });
+    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; updateMatch(); });
     var nexcl = el.querySelector("#lc-nexcl");
-    if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; });
+    if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; updateMatch(); });
+
+    updateMatch();
 
     el.querySelectorAll(".lc-sp").forEach(function (c) {
       c.addEventListener("click", function () {
@@ -476,20 +543,31 @@
   function renderStart(el, ctx) {
     var state = ctx.state;
     var weekdayOnly = ctx.config.steps.start_date.weekday_only;
+    var expected = weekdayOnly ? WEEKDAYS.indexOf(weekdayOnly) : -1;
+
+    // Anchor the date input's step grid to the target weekday so the native
+    // picker only offers matching dates (Chromium greys out the rest).
+    // Validation below stays as the fallback for browsers/entry methods
+    // that don't honour step in their calendar UI.
+    var stepAttrs = "";
+    if (expected >= 0) {
+      var anchor = toDateInputValue(nextWeekday(new Date(), expected));
+      stepAttrs = ' min="' + anchor + '" step="7"';
+    }
+
     el.innerHTML =
       '<div class="lockie-configurator__field">' +
       '<label class="lockie-configurator__label">Start Date <span class="lockie-configurator__req">*</span></label>' +
       '<input type="date" id="lc-sd" value="' +
       escapeHtml(state.start_date) +
-      '">' +
+      '"' + stepAttrs + '>' +
       (weekdayOnly ? '<div class="lockie-configurator__note">Must be a ' + escapeHtml(weekdayOnly) + ".</div>" : "") +
       '<div class="lockie-configurator__err" id="lc-sd-err"></div>' +
       "</div>";
     el.querySelector("#lc-sd").addEventListener("change", function (e) {
       state.start_date = e.target.value;
       var errEl = el.querySelector("#lc-sd-err");
-      if (weekdayOnly) {
-        var expected = WEEKDAYS.indexOf(weekdayOnly);
+      if (expected >= 0) {
         var d = new Date(e.target.value);
         errEl.textContent = e.target.value && expected >= 0 && d.getDay() !== expected
           ? "That's not a " + weekdayOnly + " — please pick a " + weekdayOnly + "."
