@@ -1,0 +1,74 @@
+{%- comment -%}
+  Lockie Church configurator wizard.
+
+  Reads custom.config / custom.price_table / custom.addon_fees off the
+  product carrying this block and injects them as inline JSON — no AJAX
+  fetch needed, Liquid already has them at render time. Stage 0: empty
+  shell only (stepper + steps + summary), no step content or pricing yet.
+  Renders identically for any product; Tier 2 (Weekly) vs Tier 3 (Economy)
+  is entirely a difference in what these metafields contain.
+{%- endcomment -%}
+
+{%- assign lc_config = block.settings.product.metafields.custom.config.value -%}
+{%- assign lc_price_table = block.settings.product.metafields.custom.price_table.value -%}
+{%- assign lc_addon_fees = block.settings.product.metafields.custom.addon_fees.value -%}
+
+{{ 'configurator.css' | asset_url | stylesheet_tag }}
+
+<div
+  class="lockie-configurator"
+  data-lockie-configurator
+  data-block-id="{{ block.id }}"
+  data-config-id="lockie-configurator-config-{{ block.id }}"
+  data-price-table-id="lockie-configurator-price-table-{{ block.id }}"
+  data-addon-fees-id="lockie-configurator-addon-fees-{{ block.id }}"
+  {{ block.shopify_attributes }}
+>
+  <script type="application/json" id="lockie-configurator-config-{{ block.id }}">
+    {{ lc_config | json }}
+  </script>
+  <script type="application/json" id="lockie-configurator-price-table-{{ block.id }}">
+    {{ lc_price_table | json }}
+  </script>
+  <script type="application/json" id="lockie-configurator-addon-fees-{{ block.id }}">
+    {{ lc_addon_fees | json }}
+  </script>
+
+  <ol class="lockie-configurator__steps-nav" id="lockie-configurator-stepper-{{ block.id }}"></ol>
+
+  <div class="lockie-configurator__layout">
+    <main class="lockie-configurator__steps" id="lockie-configurator-steps-{{ block.id }}"></main>
+
+    <aside class="lockie-configurator__summary">
+      <div class="lockie-configurator__summary-head">Your order</div>
+      <div class="lockie-configurator__summary-body">
+        <div id="lockie-configurator-lines-{{ block.id }}"></div>
+        <div class="lockie-configurator__lineitem lockie-configurator__lineitem--total">
+          <span>Total</span>
+          <span id="lockie-configurator-total-{{ block.id }}">&pound;0.00</span>
+        </div>
+        <div class="lockie-configurator__unit-note" id="lockie-configurator-unit-note-{{ block.id }}"></div>
+        <button
+          class="lockie-configurator__add-cart"
+          id="lockie-configurator-addcart-{{ block.id }}"
+          type="button"
+          disabled
+        >
+          Add to basket
+        </button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+{{ 'configurator.js' | asset_url | script_tag }}
+
+{% schema %}
+{
+  "name": "Configurator wizard",
+  "target": "section",
+  "settings": [
+    { "type": "product", "id": "product", "label": "Product", "autofill": true }
+  ]
+}
+{% endschema %}
