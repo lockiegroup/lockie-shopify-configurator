@@ -47,6 +47,16 @@
  * way out (see explodeDisplayFields in cart_transform_run.ts), so what
  * lands on the checkout/order is clean "Label: Value" rows matching the
  * WooCommerce layout, not a raw JSON blob. See buildDisplayFields.
+ *
+ * Uploads pass: the Design step's "Add a custom image" field and the
+ * Holyday step's optional template upload both POST to the lockie-uploads
+ * Cloudflare Worker (upload-worker/ at the repo root — see CLAUDE.md's
+ * upload plan for why a Worker relay rather than a self-hosted backend or a
+ * third-party app) on file-select, not deferred to add-to-basket. The
+ * Worker's returned permanent URL lands in state (design_upload_url /
+ * holyday_upload_url) and flows into buildDisplayFields exactly like every
+ * other display field — no change to _quantity/pricing/Cart Transform,
+ * uploads are display-only. See wireFileUpload/uploadFileToWorker.
  */
 (function () {
   var WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -166,6 +176,105 @@
     return y + "-" + m + "-" + day;
   }
 
+  /* ========================= UPLOADS ========================= */
+  // Shared by the Design step's "Add a custom image" field and the Holyday
+  // step's template upload — same Worker, same status states, different
+  // state keys. See the file header's "Uploads pass" note.
+
+  var UPLOAD_WORKER_URL = "https://lockie-uploads.lockiegroup.workers.dev/upload";
+  var UPLOAD_MAX_SIZE = 20 * 1024 * 1024; // 20MB — mirrors upload-worker/src/index.ts
+  var DESIGN_UPLOAD_EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "ai"];
+  var HOLYDAY_UPLOAD_EXTENSIONS = ["xlsx"];
+
+  function uploadFileToWorker(file) {
+    var formData = new FormData();
+    formData.append("file", file);
+    return fetch(UPLOAD_WORKER_URL, { method: "POST", body: formData }).then(function (res) {
+      return res.text().then(function (text) {
+        if (!res.ok) throw new Error(text || "Upload failed.");
+        var body;
+        try {
+          body = JSON.parse(text);
+        } catch (err) {
+          throw new Error("Upload succeeded but the response was invalid.");
+        }
+        return body; // { url, filename }
+      });
+    });
+  }
+
+  // Wires a <input type="file"> to the upload Worker, tracking progress in
+  // state[opts.statusKey] ("idle" | "uploading" | "done" | "error") and
+  // rendering it into el's status element. Client-side type/size checks give
+  // fast feedback before ever hitting the network; the Worker re-validates
+  // both server-side regardless (never trust the client — same principle as
+  // pricing, see CLAUDE.md).
+  //
+  // opts: { inputId, statusId, urlKey, filenameKey, statusKey, errorKey,
+  //         allowedExtensions }
+  function wireFileUpload(el, state, opts) {
+    var input = el.querySelector("#" + opts.inputId);
+    var statusEl = el.querySelector("#" + opts.statusId);
+    if (!input || !statusEl) return;
+
+    function renderStatus() {
+      var status = state[opts.statusKey];
+      if (status === "uploading") {
+        statusEl.textContent = "Uploading…";
+        statusEl.style.color = "";
+      } else if (status === "done") {
+        statusEl.textContent = "✓ Uploaded: " + state[opts.filenameKey];
+        statusEl.style.color = "var(--lc-green)";
+      } else if (status === "error") {
+        statusEl.textContent = state[opts.errorKey] || "Upload failed.";
+        statusEl.style.color = "var(--lc-accent)";
+      } else {
+        statusEl.textContent = "";
+        statusEl.style.color = "";
+      }
+    }
+    renderStatus();
+
+    input.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      var ext = (file.name.split(".").pop() || "").toLowerCase();
+      if (opts.allowedExtensions && opts.allowedExtensions.indexOf(ext) === -1) {
+        state[opts.statusKey] = "error";
+        state[opts.errorKey] =
+          "File type \"." + ext + "\" is not accepted. Allowed: " + opts.allowedExtensions.join(", ") + ".";
+        renderStatus();
+        return;
+      }
+      if (file.size > UPLOAD_MAX_SIZE) {
+        state[opts.statusKey] = "error";
+        state[opts.errorKey] =
+          "File is too large (" + (file.size / 1024 / 1024).toFixed(1) + "MB) — max is 20MB.";
+        renderStatus();
+        return;
+      }
+
+      state[opts.statusKey] = "uploading";
+      state[opts.urlKey] = "";
+      state[opts.errorKey] = "";
+      renderStatus();
+
+      uploadFileToWorker(file)
+        .then(function (result) {
+          state[opts.statusKey] = "done";
+          state[opts.urlKey] = result.url;
+          state[opts.filenameKey] = result.filename;
+          renderStatus();
+        })
+        .catch(function (err) {
+          state[opts.statusKey] = "error";
+          state[opts.errorKey] = err.message || "Upload failed.";
+          renderStatus();
+        });
+    });
+  }
+
   /* ========================= STEP DEFINITIONS ========================= */
   // Static UI copy (title/hint) + which config path gates whether the step
   // exists at all + a render/validate pair. Order here is the canonical
@@ -219,7 +328,21 @@
         title: "Image Design & Verse",
         hint: "Choose a verse and a design, or supply your own.",
         render: renderDesign,
-        validate: function () {
+        validate: function (ctx) {
+          var s = ctx.state;
+          var designConfig = ctx.config.steps.design.design;
+          var uploadAllowed = ctx.config.uploads_enabled && designConfig && designConfig.allow_upload;
+          if (uploadAllowed && s.design_mode === "custom") {
+            if (s.design_upload_status === "uploading") {
+              return "Please wait for your image to finish uploading.";
+            }
+            if (s.design_upload_status === "error") {
+              return s.design_upload_error || "Please fix the upload error before continuing.";
+            }
+            if (s.design_upload_status !== "done" || !s.design_upload_url) {
+              return "Please upload your custom image, or choose a different design option.";
+            }
+          }
           return "";
         },
       });
@@ -251,7 +374,13 @@
         title: "Holyday & Diocese Specials",
         hint: "Add diocese holyday specials if required.",
         render: renderHolydays,
-        validate: function () {
+        validate: function (ctx) {
+          // Upload is optional (matches the live site) — only block while an
+          // upload is actively in flight, so a customer can't click Next
+          // mid-upload and lose the file silently.
+          if (ctx.state.holyday_upload_status === "uploading") {
+            return "Please wait for your template upload to finish.";
+          }
           return "";
         },
       });
@@ -480,12 +609,20 @@
       html +=
         '<div class="lockie-configurator__field" id="' + idPrefix + '-custom-wrap" style="margin-top:10px;display:' +
         (mode === "custom" ? "block" : "none") +
-        '">' +
-        '<input type="text" id="' + idPrefix + '-custom" placeholder="' + escapeHtml(opts.customPlaceholder) + '" value="' +
-        escapeHtml(state[opts.customValueKey]) +
-        '">' +
-        (opts.customNote ? '<div class="lockie-configurator__note">' + escapeHtml(opts.customNote) + "</div>" : "") +
-        "</div>";
+        '">';
+      if (opts.fileUpload) {
+        html +=
+          '<input type="file" id="' + idPrefix + '-custom-file" accept="' + escapeHtml(opts.acceptAttr || "") + '">' +
+          (opts.customNote ? '<div class="lockie-configurator__note">' + escapeHtml(opts.customNote) + "</div>" : "") +
+          '<div class="lockie-configurator__note" id="' + idPrefix + '-custom-status"></div>';
+      } else {
+        html +=
+          '<input type="text" id="' + idPrefix + '-custom" placeholder="' + escapeHtml(opts.customPlaceholder) + '" value="' +
+          escapeHtml(state[opts.customValueKey]) +
+          '">' +
+          (opts.customNote ? '<div class="lockie-configurator__note">' + escapeHtml(opts.customNote) + "</div>" : "");
+      }
+      html += "</div>";
     }
 
     html += "</div>";
@@ -510,11 +647,23 @@
         state[opts.popularValueKey] = e.target.value;
       });
     }
-    var customInp = el.querySelector("#" + opts.idPrefix + "-custom");
-    if (customInp) {
-      customInp.addEventListener("input", function (e) {
-        state[opts.customValueKey] = e.target.value;
+    if (opts.fileUpload) {
+      wireFileUpload(el, state, {
+        inputId: opts.idPrefix + "-custom-file",
+        statusId: opts.idPrefix + "-custom-status",
+        urlKey: opts.urlKey,
+        filenameKey: opts.filenameKey,
+        statusKey: opts.statusKey,
+        errorKey: opts.errorKey,
+        allowedExtensions: opts.allowedExtensions,
       });
+    } else {
+      var customInp = el.querySelector("#" + opts.idPrefix + "-custom");
+      if (customInp) {
+        customInp.addEventListener("input", function (e) {
+          state[opts.customValueKey] = e.target.value;
+        });
+      }
     }
   }
 
@@ -567,9 +716,15 @@
         popularItems: designs.length ? designs : null,
         popularValueKey: "design_code",
         popularOptionText: function (d) { return d.code + " — " + d.description; },
-        customValueKey: uploadAllowed ? "upload_name" : null,
-        customPlaceholder: "(prototype) type a filename e.g. our-logo.pdf",
-        customNote: uploadAllowed ? "Accepted: pdf, png, ai, jpg." : null,
+        customValueKey: uploadAllowed ? "design_upload_url" : null,
+        fileUpload: uploadAllowed,
+        acceptAttr: "." + DESIGN_UPLOAD_EXTENSIONS.join(",."),
+        urlKey: "design_upload_url",
+        filenameKey: "design_upload_filename",
+        statusKey: "design_upload_status",
+        errorKey: "design_upload_error",
+        allowedExtensions: DESIGN_UPLOAD_EXTENSIONS,
+        customNote: uploadAllowed ? "Accepted: pdf, png, ai, jpg — max 20MB." : null,
         chartUrl: chartUrls.designs || null,
         chartLinkText: "View designs chart",
       });
@@ -590,7 +745,13 @@
         idPrefix: "lc-design",
         modeKey: "design_mode",
         popularValueKey: "design_code",
-        customValueKey: uploadAllowed ? "upload_name" : null,
+        customValueKey: uploadAllowed ? "design_upload_url" : null,
+        fileUpload: uploadAllowed,
+        urlKey: "design_upload_url",
+        filenameKey: "design_upload_filename",
+        statusKey: "design_upload_status",
+        errorKey: "design_upload_error",
+        allowedExtensions: DESIGN_UPLOAD_EXTENSIONS,
       });
     }
   }
@@ -690,6 +851,9 @@
   function renderHolydays(el, ctx) {
     var max = ctx.config.steps.holydays.max || 0;
     var state = ctx.state;
+    var chartUrl = (ctx.chartUrls || {}).holydays;
+    var showUpload = state.holydays > 0;
+
     var opts = '<option value="0">No holyday specials</option>';
     for (var i = 1; i <= max; i++) {
       opts += '<option value="' + i + '"' + (state.holydays === i ? " selected" : "") + ">+" + i + " special" + (i > 1 ? "s" : "") + "</option>";
@@ -698,11 +862,32 @@
       '<div class="lockie-configurator__field">' +
       '<label class="lockie-configurator__label">Number of holyday specials</label>' +
       '<select id="lc-hd">' + opts + "</select>" +
-      '<div class="lockie-configurator__note">Upload your holyday dates template in production.</div>' +
+      "</div>" +
+      '<div class="lockie-configurator__field" id="lc-hd-upload-wrap" style="display:' + (showUpload ? "block" : "none") + '">' +
+      (chartUrl
+        ? '<div class="lockie-configurator__note"><a class="lockie-configurator__chart-link" href="' +
+          escapeHtml(chartUrl) +
+          '" target="_blank" rel="noopener noreferrer">Click here to download our Holydays template list for upload</a></div>'
+        : "") +
+      '<label class="lockie-configurator__label">Upload your filled-in template (optional)</label>' +
+      '<input type="file" id="lc-hd-file" accept="' + escapeHtml("." + HOLYDAY_UPLOAD_EXTENSIONS.join(",.")) + '">' +
+      '<div class="lockie-configurator__note" id="lc-hd-file-status"></div>' +
       "</div>";
+
     el.querySelector("#lc-hd").addEventListener("change", function (e) {
       state.holydays = +e.target.value;
+      el.querySelector("#lc-hd-upload-wrap").style.display = state.holydays > 0 ? "block" : "none";
       ctx.refresh();
+    });
+
+    wireFileUpload(el, state, {
+      inputId: "lc-hd-file",
+      statusId: "lc-hd-file-status",
+      urlKey: "holyday_upload_url",
+      filenameKey: "holyday_upload_filename",
+      statusKey: "holyday_upload_status",
+      errorKey: "holyday_upload_error",
+      allowedExtensions: HOLYDAY_UPLOAD_EXTENSIONS,
     });
   }
 
@@ -869,12 +1054,19 @@
       custom_verse: "",
       design_mode: "none",
       design_code: "",
-      upload_name: "",
+      design_upload_url: "",
+      design_upload_filename: "",
+      design_upload_status: "idle",
+      design_upload_error: "",
       num_from: "",
       num_to: "",
       excluded: "",
       specials: [],
       holydays: 0,
+      holyday_upload_url: "",
+      holyday_upload_filename: "",
+      holyday_upload_status: "idle",
+      holyday_upload_error: "",
       start_date: "",
       notes: "",
     };
@@ -997,7 +1189,9 @@
     }
 
     function resolveSelectedDesign() {
-      if (state.design_mode === "custom") return state.upload_name || "";
+      if (state.design_mode === "custom") {
+        return state.design_upload_status === "done" ? state.design_upload_url : "";
+      }
       if (state.design_mode !== "popular") return "";
       var match = designs.filter(function (d) { return d.code === state.design_code; })[0];
       return match ? match.code + " — " + match.description : "";
@@ -1040,6 +1234,7 @@
       push("Full Number Range", formatNumberRange(state.num_from, state.num_to, state.excluded));
 
       fields.push(["Holyday specials", state.holydays > 0 ? String(state.holydays) : "None"]);
+      push("Holyday Template", state.holyday_upload_status === "done" ? state.holyday_upload_url : "");
       push("Specials", state.specials.join(", "));
 
       push("Start Date", state.start_date);

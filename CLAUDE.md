@@ -338,9 +338,10 @@ every number spelled out — line item property values have a practical length
 limit and ranges can run into the hundreds.
 
 `headings_mode` is one dropdown for the whole step (not per-line — see the
-headings UX fix). `design_upload_name`/"Selected Design" for a custom image is
-the Stage 3 stub filename; the real upload URL lands here once uploads are
-wired (step 6). "Use previous" is a flag only — it never looks up order
+headings UX fix). "Selected Design" for a custom image is the real permanent
+URL returned by the lockie-uploads Worker (`design_upload_url` in wizard
+state) once the upload completes — see the file header's "Uploads pass" note
+in configurator.js. "Use previous" is a flag only — it never looks up order
 history, fulfilment actions it manually.
 
 Underscore prefix = hidden from customer, visible to fulfilment on the order.

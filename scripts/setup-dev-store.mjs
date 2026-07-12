@@ -163,13 +163,15 @@ const ADDON_FEES_WEEKLY = JSON.parse(
 const VERSE_CATALOGUE = JSON.parse(readFileSync(resolve(ROOT, "verse-catalogue.json"), "utf8"));
 const DESIGN_CATALOGUE = JSON.parse(readFileSync(resolve(ROOT, "design-catalogue.json"), "utf8"));
 
-// "View verses/designs chart" link targets — same PDFs on both products.
-// Data-driven/swappable like everything else: update these two URLs (or move
-// to a JSON file, following the verse/design catalogue pattern) rather than
-// hardcoding a link anywhere in configurator.js.
+// "View verses/designs chart" and "download holydays template" link targets
+// — same files on both products. Data-driven/swappable like everything
+// else: update these URLs (or move to a JSON file, following the
+// verse/design catalogue pattern) rather than hardcoding a link anywhere in
+// configurator.js.
 const CHART_URLS = {
   verses: "https://cdn.shopify.com/s/files/1/0835/8507/3396/files/VERSES-2020.pdf?v=1783812553",
   designs: "https://cdn.shopify.com/s/files/1/0835/8507/3396/files/designs-2020.pdf?v=1783812555",
+  holydays: "https://cdn.shopify.com/s/files/1/0835/8507/3396/files/Holy-Days-2nd-collection-List.xlsx?v=1783879176",
 };
 
 const CONFIG_WEEKLY = {

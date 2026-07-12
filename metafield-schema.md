@@ -251,9 +251,10 @@ rows instead of a JSON blob, without the 30-point cap ever being exceeded.
 spelled out (line item property values have a practical length limit; ranges
 run into the hundreds). `headings_mode`/"Heading" is one flag for the whole
 step, not per line (see the headings UX fix). "Selected Design" for a custom
-image is the Stage 3 stub filename — becomes a real upload URL once uploads
-are wired (build order step 6). "Use previous" never looks up order
-history — it's a flag only, fulfilment actions it manually.
+image is the real permanent URL returned by the lockie-uploads Cloudflare
+Worker once the upload completes (build order step 6, done). "Use previous"
+never looks up order history — it's a flag only, fulfilment actions it
+manually.
 
 Underscore-prefixed = hidden from customer in cart/checkout but visible to you on
 the order and in fulfilment.

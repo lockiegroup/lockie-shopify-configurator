@@ -123,6 +123,7 @@
 .lockie-configurator input[type="text"],
 .lockie-configurator input[type="number"],
 .lockie-configurator input[type="date"],
+.lockie-configurator input[type="file"],
 .lockie-configurator textarea {
   width: 100%;
   padding: 9px 10px;
