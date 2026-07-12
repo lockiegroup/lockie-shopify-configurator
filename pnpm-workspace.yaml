@@ -1,6 +1,7 @@
 packages:
   - "extensions/*"
   - "wizard-pricing-tests"
+  - "upload-worker"
 
 allowBuilds:
   '@parcel/watcher': true
@@ -9,4 +10,6 @@ allowBuilds:
   core-js: false
   esbuild: true
   prisma: true
+  sharp: false
   unrs-resolver: true
+  workerd: true

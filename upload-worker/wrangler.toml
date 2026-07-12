@@ -1,0 +1,31 @@
+# Learn more: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "lockie-uploads"
+main = "src/index.ts"
+compatibility_date = "2026-07-12"
+
+# Private bucket — no public access. Only this Worker (via the binding below)
+# can read or write it. Files are served back out through GET /file/:key
+# instead of a public bucket URL. See CLAUDE.md's upload plan for why.
+[[r2_buckets]]
+binding = "UPLOADS_BUCKET"
+bucket_name = "lockie-uploads"
+
+# Simple fixed-window rate limit on /upload, keyed by client IP — caps
+# scripted abuse of an endpoint that has no customer login to authenticate
+# against. namespace_id is just a locally-unique label, not something to
+# look up in the dashboard. Remove this block (and its use in src/index.ts)
+# if it turns out not to be available on the account's current plan —
+# confirm at `wrangler deploy` time.
+[[ratelimits]]
+name = "UPLOAD_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+# Comma-separated allow-list of storefront origins permitted to call
+# /upload. Update when the production domain goes live.
+[vars]
+ALLOWED_ORIGINS = "https://lockie-church.myshopify.com,https://lockiechurch.com"
