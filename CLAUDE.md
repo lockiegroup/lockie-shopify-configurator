@@ -99,6 +99,17 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
      integration, but that's unconfirmed against vendor docs and still adds
      a recurring cost and a third-party storage dependency for customer
      artwork.
+   - ❌ *Easify Product Options (free, works well on another of the site
+     owner's stores).* Rejected: same architectural mismatch — it installs
+     as a theme App Embed hooking the native product form, and its docs
+     (132 pages) never mention a JS API/event for reading the uploaded
+     file's URL from custom code, less documented headless surface than
+     Uploadery even had. Free plan does include file upload, but uploaded
+     files **auto-delete after 90 days** — a second, independent
+     disqualifier for print-fulfilment artwork regardless of integration
+     fit. Works well on the owner's other store because that store uses an
+     unmodified native product form — exactly Easify's target case, not
+     ours.
    - ✅ **Front-runner: a minimal serverless upload relay** (Cloudflare
      Worker + R2, or a single Vercel function) — no always-on server to
      maintain, near-zero cost at this volume, returns a file URL that the
