@@ -339,11 +339,72 @@ Underscore prefix = hidden from customer, visible to fulfilment on the order.
 Items that only matter once a real production store exists — not actionable
 on the dev store, don't investigate early:
 
-- **Set the production Shopify store's currency to GBP at creation.** There
-  is no production store yet (still on WooCommerce) — this isn't a "check,"
-  it's a one-time setting to get right when the store is created. All pricing
-  proven so far (£163.32, £110.28, etc.) is dev-store math validated against
-  GBP price-table values; it depends on the real store also being set to GBP.
+- **Confirm the production store is set to GBP at creation.** The dev store
+  is already GBP (orders #1001/#1002 charged in £ exactly, per "Stage 3 —
+  proven" above) — this is just making sure the real production store,
+  which doesn't exist yet, is created with the same setting.
+
+## Matrixify migration + redirect plan (Step 9)
+
+Staged plan, reviewed and approved — **not yet executed**. Needs WooCommerce
+exports from the site owner and a real production store to run against, so
+this can't start until both exist.
+
+**Stage A — Inventory & classification.** Get the full current WooCommerce
+product catalogue and classify every product:
+- *Tier 1 (native)* — cash books, stock envelopes, anything without custom
+  options/uploads/banded pricing → migrates as a normal Shopify product via
+  Matrixify.
+- *Tier 2/3 (configurator)* — Weekly, Economy, and whatever else exists
+  beyond the two dev-store proof products → **excluded from the Matrixify
+  product import entirely.** These already exist here, hand-authored against
+  the metafield schema. Weekly's price table alone was hand-compressed from
+  280 WooCommerce rows into 40 bands — deliberate engineering, not something
+  to re-derive mechanically from an export. Re-importing these as products
+  risks clobbering already-proven config with mismatched data.
+This classification decides everything downstream — what Matrixify touches
+and what every redirect points to.
+
+**Stage B — Exports from WooCommerce.** Products CSV (full catalogue, not
+just Tier 1 — Tier 2/3 rows are still needed for redirect mapping even
+though excluded from import); customers export; orders export (summary-only
+is likely sufficient — the old configurator's per-order specifics lived in a
+bespoke Woo plugin's own meta shape, not worth re-mapping into
+`_display_fields_json` for closed historical orders); a full current URL
+list (cheapest source: the XML sitemap, catches orphaned-but-indexed URLs a
+plugin export might miss).
+
+**Stage C — How Matrixify fits.** Matrixify (Shopify side) is built by the
+same vendor as WP All Export (WooCommerce side) — a matched pair with
+compatible column templates, designed for exactly this migration. Matrixify
+imports products (variants, images-by-URL, metafields, collections, SEO
+handle), customers, orders (historical records only, no payment replay),
+**and a dedicated Redirects import** that writes straight into Shopify's
+native URL Redirects — the bulk-loading mechanism for Stage D, not
+hand-entered one row at a time. Can't carry over customer passwords
+(everyone resets on first login) or make sense of Woo plugin data with no
+Shopify equivalent.
+
+**Stage D — Build the redirect map.** One row per old URL: old path → new
+Shopify path. Tier 1 product URLs → the newly-imported product's handle.
+Tier 2/3 product URLs → the *already-built* wizard product's handle (these
+exist now, just need the old Woo URL(s) pointed at them). Category/shop
+pages → matching Shopify collection. Discontinued/orphaned products →
+nearest sensible target (parent collection or homepage), never a bare 404.
+
+**Stage E — Rehearsal, then cutover.** Dry-run the full import (products,
+customers, orders, redirects) against the real production store once it
+exists and is confirmed GBP (see Launch checklist) — verify a sample of
+products/customers landed correctly and a sample of redirects actually
+301 — before DNS cutover.
+
+**Stage F — Post-launch monitoring.** Watch Shopify's 404 report / Search
+Console for a few weeks after go-live to catch anything the mapping missed.
+
+**Still needed from the site owner before this can start:** the full current
+product catalogue (to classify Tier 1 vs Tier 2/3 — only Weekly/Economy are
+known from the dev store so far), a decision on order-history import depth,
+and the sitemap URL or WooCommerce admin access for the full URL list.
 
 ## Dev environment
 
@@ -351,7 +412,8 @@ on the dev store, don't investigate early:
   while building).
 - Shopify CLI for scaffold and deploy. Node.js required.
 - Reference theme: Dawn.
-- Full catalogue migration happens separately via Matrixify, not on the dev build store.
+- Full catalogue migration happens separately via Matrixify — see "Matrixify
+  migration + redirect plan" above, not on the dev build store.
 
 ## Reference files in this repo
 
