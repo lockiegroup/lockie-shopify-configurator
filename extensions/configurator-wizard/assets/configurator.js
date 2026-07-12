@@ -17,27 +17,56 @@
  * exclusions, not a toggle; see hasSpecialNumbering in pricing.js); box/
  * envelope/text colour, headings, verse/design, start date, and notes do
  * not, so refresh() is only wired to the inputs that actually move the total.
- * Display only — add-to-cart wiring is Stage 3.
  *
- * NOTE: verse/design stock lists are not yet in a metafield (metafield-schema.md
- * proposes a shared custom.verses/custom.designs metaobject, not built yet) —
- * ported from the prototype as a temporary hardcoded list pending that work.
+ * Headings/verse/design UX pass: ported the real site's multi-mode dropdowns
+ * (Enter new / Use previous for headings; popular / custom / previous / none
+ * for verse and design) — see renderHeadings/renderDesign. Verse and design
+ * stock lists now come from the custom.verses/custom.designs metafields
+ * (readJSON'd in createWizard, same pattern as config/price_table/addon_fees)
+ * rather than the old hardcoded arrays — see verse-catalogue.json/
+ * design-catalogue.json at the repo root for the seed data and
+ * scripts/setup-dev-store.mjs for how it's attached to each product.
+ * "Use previous" never looks up order history — it's purely a flag for
+ * fulfilment to action manually (see CLAUDE.md / the metafield schema notes).
+ *
+ * Stage 3: add-to-cart, in the addCartEl click handler in createWizard.
+ * Always adds with quantity: 1 and carries the real box count via the
+ * _quantity property — see CLAUDE.md's Hard rules for why (checkout rounds
+ * fixedPricePerUnit to 2dp *before* multiplying by quantity, so any
+ * quantity > 1 loses cent-exactness; pinning it at 1 lets the Function set
+ * the full line total directly, no division). _special_numbering is read
+ * straight off hasSpecialNumbering(state) — the same function the live £12
+ * summary line uses — so the cart flag the Function trusts and the total
+ * the customer saw can never disagree.
+ *
+ * Order-display pass: everything non-pricing-critical (colours, headings,
+ * verse, design, numbering range, notes) is bundled into one
+ * _display_fields_json property — same complexity-cap reason as before, one
+ * attribute(key:) lookup instead of ~15 — but the Cart Transform Function
+ * now parses and EXPLODES it into individually-labelled attributes on its
+ * way out (see explodeDisplayFields in cart_transform_run.ts), so what
+ * lands on the checkout/order is clean "Label: Value" rows matching the
+ * WooCommerce layout, not a raw JSON blob. See buildDisplayFields.
  */
 (function () {
   var WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  // Temporary — see NOTE above. Identical across Weekly/Economy in the prototype.
-  var VERSES = [
-    "V1 — All things come from You, O Lord",
-    "V2 — Give back some of God's gifts to God",
-    "V3 — The Lord blesses His people with peace",
-    "V4 — In Thanksgiving to God",
-    "V5 — Trust in the Lord with all your heart",
-    "V8 — Our gift to God and His Church",
-    "V18 — My Weekly Offering",
-    "V20 — Our weekly Offering to God",
-  ];
-  var DESIGNS = ["C1", "C2", "C3", "C5", "D1", "D5", "D29 (Salvation Army)", "D30 (CofE)"];
+  // Mirrors the mode dropdown option text in renderHeadings/renderDesign —
+  // used to render the same wording into the "Heading"/"Verse"/"Design" rows
+  // on the order (see buildDisplayFields).
+  var HEADINGS_MODE_LABELS = { new: "Enter new heading", previous: "Use previous heading" };
+  var VERSE_MODE_LABELS = {
+    popular: "Select a popular verse",
+    custom: "Add a custom verse",
+    previous: "Use previous verse",
+    none: "No verse",
+  };
+  var DESIGN_MODE_LABELS = {
+    popular: "Select a popular design",
+    custom: "Add a custom image",
+    previous: "Use previous image",
+    none: "No design",
+  };
 
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
@@ -84,6 +113,39 @@
     if (diff === 0) return { text: base + " Matches ✓", ok: true };
     if (diff > 0) return { text: base + " Exclude " + diff + " more number" + (diff === 1 ? "" : "s") + " to match.", ok: false };
     return { text: base + " Add " + (-diff) + " more number" + (-diff === 1 ? "" : "s") + " back (widen the range or exclude fewer).", ok: false };
+  }
+
+  // Compact "1-12, 14-53" representation of the numbering range minus valid
+  // exclusions — the order's "Full Number Range" row. Contiguous runs are
+  // collapsed rather than spelled out number-by-number: Weekly ranges run
+  // into the hundreds, and Shopify line item property values have a
+  // practical length limit, so a literal comma list risks truncation on
+  // larger orders. Pure display formatting, not pricing — unlike
+  // numberingMatch/hasSpecialNumbering, this doesn't need to live in
+  // pricing.js.
+  function formatNumberRange(fromRaw, toRaw, excludedStr) {
+    var from = +fromRaw;
+    var to = +toRaw;
+    if (!fromRaw || !toRaw || isNaN(from) || isNaN(to) || to < from) return "";
+
+    var excluded = {};
+    (excludedStr || "").split(",").forEach(function (part) {
+      var n = parseInt(part.trim(), 10);
+      if (!isNaN(n) && n >= from && n <= to) excluded[n] = true;
+    });
+
+    var segments = [];
+    var segStart = null;
+    for (var n = from; n <= to + 1; n++) {
+      var included = n <= to && !excluded[n];
+      if (included) {
+        if (segStart === null) segStart = n;
+      } else if (segStart !== null) {
+        segments.push(segStart === n - 1 ? String(segStart) : segStart + "-" + (n - 1));
+        segStart = null;
+      }
+    }
+    return segments.join(", ");
   }
 
   // Finds the next date (on/after `from`) that falls on `targetDow` (0=Sunday
@@ -142,8 +204,9 @@
         render: renderHeadings,
         validate: function (ctx) {
           var lines = ctx.config.steps.headings.lines || [];
-          if (lines.length && !ctx.state.headings[lines[0]]) {
-            return "Please enter at least the " + lines[0] + ".";
+          if (!lines.length) return "";
+          if (ctx.state.headings_mode === "new" && !ctx.state.headings[lines[0]]) {
+            return "Please enter at least the " + lines[0] + ", or choose “Use previous heading”.";
           }
           return "";
         },
@@ -317,30 +380,142 @@
   function renderHeadings(el, ctx) {
     var lines = ctx.config.steps.headings.lines || [];
     var state = ctx.state;
-    el.innerHTML = lines
-      .map(function (h, i) {
-        return (
-          '<div class="lockie-configurator__field">' +
-          '<label class="lockie-configurator__label">' +
-          escapeHtml(h) +
-          (i === 0 ? ' <span class="lockie-configurator__req">*</span>' : "") +
-          "</label>" +
-          '<input type="text" data-h="' +
-          escapeHtml(h) +
-          '" value="' +
-          escapeHtml(state.headings[h] || "") +
-          '" placeholder="' +
-          escapeHtml(h) +
-          '">' +
-          "</div>"
-        );
-      })
-      .join("");
+    var mode = state.headings_mode || "new";
+
+    var html =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Heading</label>' +
+      '<select id="lc-headings-mode">' +
+      '<option value="new"' + (mode === "new" ? " selected" : "") + '>Enter new heading</option>' +
+      '<option value="previous"' + (mode === "previous" ? " selected" : "") + '>Use previous heading</option>' +
+      "</select>" +
+      "</div>" +
+      '<div id="lc-headings-fields" style="display:' + (mode === "new" ? "block" : "none") + '">' +
+      lines
+        .map(function (h, i) {
+          return (
+            '<div class="lockie-configurator__field">' +
+            '<label class="lockie-configurator__label">' +
+            escapeHtml(h) +
+            (i === 0 ? ' <span class="lockie-configurator__req">*</span>' : "") +
+            "</label>" +
+            '<input type="text" data-h="' +
+            escapeHtml(h) +
+            '" value="' +
+            escapeHtml(state.headings[h] || "") +
+            '" placeholder="' +
+            escapeHtml(h) +
+            '">' +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>";
+
+    el.innerHTML = html;
+
+    el.querySelector("#lc-headings-mode").addEventListener("change", function (e) {
+      state.headings_mode = e.target.value;
+      el.querySelector("#lc-headings-fields").style.display = e.target.value === "new" ? "block" : "none";
+    });
     el.querySelectorAll("input[data-h]").forEach(function (inp) {
       inp.addEventListener("input", function (e) {
         state.headings[e.target.dataset.h] = e.target.value;
       });
     });
+  }
+
+  // Shared by the verse and design mode-selects: builds the "mode" dropdown
+  // plus whichever secondary control that mode needs, wires visibility, and
+  // returns the wiring function so the caller can attach change/input
+  // listeners once the whole step's HTML is in the DOM.
+  //
+  // opts: {
+  //   idPrefix, label, modeKey (state key for the mode), modeOptions: [{value,text}],
+  //   popularItems, popularValueKey (state key for the chosen popular code),
+  //   popularOptionText: fn(item) -> string,
+  //   customValueKey (state key for free-text custom value), customPlaceholder,
+  //   customNote, chartUrl, chartLinkText (both optional — omit to skip the link)
+  // }
+  function renderModeField(state, opts) {
+    var mode = state[opts.modeKey] || "none";
+    var idPrefix = opts.idPrefix;
+
+    var html =
+      '<div class="lockie-configurator__field">' +
+      '<div class="lockie-configurator__label-row">' +
+      '<label class="lockie-configurator__label">' + escapeHtml(opts.label) + "</label>" +
+      (opts.chartUrl
+        ? '<a class="lockie-configurator__chart-link" href="' + escapeHtml(opts.chartUrl) +
+          '" target="_blank" rel="noopener noreferrer">' + escapeHtml(opts.chartLinkText) + "</a>"
+        : "") +
+      "</div>" +
+      '<select id="' + idPrefix + '-mode">' +
+      opts.modeOptions
+        .map(function (o) {
+          return '<option value="' + o.value + '"' + (mode === o.value ? " selected" : "") + ">" + escapeHtml(o.text) + "</option>";
+        })
+        .join("") +
+      "</select>";
+
+    if (opts.popularItems) {
+      html +=
+        '<div class="lockie-configurator__field" id="' + idPrefix + '-popular-wrap" style="margin-top:10px;display:' +
+        (mode === "popular" ? "block" : "none") +
+        '">' +
+        '<select id="' + idPrefix + '-popular">' +
+        '<option value="">Choose…</option>' +
+        opts.popularItems
+          .map(function (item) {
+            var v = item.code;
+            return '<option value="' + escapeHtml(v) + '"' + (state[opts.popularValueKey] === v ? " selected" : "") + ">" +
+              escapeHtml(opts.popularOptionText(item)) + "</option>";
+          })
+          .join("") +
+        "</select>" +
+        "</div>";
+    }
+
+    if (opts.customValueKey) {
+      html +=
+        '<div class="lockie-configurator__field" id="' + idPrefix + '-custom-wrap" style="margin-top:10px;display:' +
+        (mode === "custom" ? "block" : "none") +
+        '">' +
+        '<input type="text" id="' + idPrefix + '-custom" placeholder="' + escapeHtml(opts.customPlaceholder) + '" value="' +
+        escapeHtml(state[opts.customValueKey]) +
+        '">' +
+        (opts.customNote ? '<div class="lockie-configurator__note">' + escapeHtml(opts.customNote) + "</div>" : "") +
+        "</div>";
+    }
+
+    html += "</div>";
+    return html;
+  }
+
+  function wireModeField(el, state, opts) {
+    var modeSel = el.querySelector("#" + opts.idPrefix + "-mode");
+    if (!modeSel) return;
+    var popularWrap = el.querySelector("#" + opts.idPrefix + "-popular-wrap");
+    var customWrap = el.querySelector("#" + opts.idPrefix + "-custom-wrap");
+
+    modeSel.addEventListener("change", function (e) {
+      state[opts.modeKey] = e.target.value;
+      if (popularWrap) popularWrap.style.display = e.target.value === "popular" ? "block" : "none";
+      if (customWrap) customWrap.style.display = e.target.value === "custom" ? "block" : "none";
+    });
+
+    var popularSel = el.querySelector("#" + opts.idPrefix + "-popular");
+    if (popularSel) {
+      popularSel.addEventListener("change", function (e) {
+        state[opts.popularValueKey] = e.target.value;
+      });
+    }
+    var customInp = el.querySelector("#" + opts.idPrefix + "-custom");
+    if (customInp) {
+      customInp.addEventListener("input", function (e) {
+        state[opts.customValueKey] = e.target.value;
+      });
+    }
   }
 
   function renderDesign(el, ctx) {
@@ -351,79 +526,73 @@
     var verseAllowCustom = designConfig.verse && designConfig.verse.allow_custom;
     var designEnabled = designConfig.design && designConfig.design.enabled;
     var uploadAllowed = config.uploads_enabled && designConfig.design && designConfig.design.allow_upload;
-    var designAllowCustom = designConfig.design && designConfig.design.allow_custom;
+    var verses = ctx.verses || [];
+    var designs = ctx.designs || [];
+    var chartUrls = ctx.chartUrls || {};
+
+    var verseModeOptions = [];
+    if (verses.length) verseModeOptions.push({ value: "popular", text: "Select a popular verse" });
+    if (verseAllowCustom) verseModeOptions.push({ value: "custom", text: "Add a custom verse" });
+    verseModeOptions.push({ value: "previous", text: "Use previous verse" }, { value: "none", text: "No verse" });
+
+    var designModeOptions = [];
+    if (designs.length) designModeOptions.push({ value: "popular", text: "Select a popular design" });
+    if (uploadAllowed) designModeOptions.push({ value: "custom", text: "Add a custom image" });
+    designModeOptions.push({ value: "previous", text: "Use previous image" }, { value: "none", text: "No design" });
 
     var html = "";
 
     if (verseEnabled) {
-      html +=
-        '<div class="lockie-configurator__field">' +
-        '<label class="lockie-configurator__label">Verse</label>' +
-        '<select id="lc-verse"><option value="">No verse</option>' +
-        VERSES.map(function (v) {
-          return '<option' + (state.verse === v ? " selected" : "") + ">" + escapeHtml(v) + "</option>";
-        }).join("") +
-        (verseAllowCustom ? '<option value="__custom">Add a custom verse…</option>' : "") +
-        "</select>";
-      if (verseAllowCustom) {
-        html +=
-          '<div class="lockie-configurator__field" id="lc-cv-wrap" style="margin-top:10px;display:' +
-          (state.verse === "__custom" ? "block" : "none") +
-          '">' +
-          '<input type="text" id="lc-cverse" placeholder="Type your custom verse" value="' +
-          escapeHtml(state.custom_verse) +
-          '">' +
-          "</div>";
-      }
-      html += "</div>";
+      html += renderModeField(state, {
+        idPrefix: "lc-verse",
+        label: "Verse",
+        modeKey: "verse_mode",
+        modeOptions: verseModeOptions,
+        popularItems: verses.length ? verses : null,
+        popularValueKey: "verse_code",
+        popularOptionText: function (v) { return v.code + " — " + v.text; },
+        customValueKey: verseAllowCustom ? "custom_verse" : null,
+        customPlaceholder: "Type your custom verse",
+        chartUrl: chartUrls.verses || null,
+        chartLinkText: "View verses chart",
+      });
     }
 
     if (designEnabled) {
-      html +=
-        '<div class="lockie-configurator__field">' +
-        '<label class="lockie-configurator__label">Design</label>' +
-        '<select id="lc-design"><option value="">No design</option>' +
-        DESIGNS.map(function (d) {
-          return '<option' + (state.design === d ? " selected" : "") + ">" + escapeHtml(d) + "</option>";
-        }).join("") +
-        (uploadAllowed ? '<option value="__upload">Upload my own image…</option>' : "") +
-        "</select>";
-      if (uploadAllowed) {
-        html +=
-          '<div class="lockie-configurator__field" id="lc-up-wrap" style="margin-top:10px;display:' +
-          (state.design === "__upload" ? "block" : "none") +
-          '">' +
-          '<input type="text" id="lc-upload" placeholder="(prototype) type a filename e.g. our-logo.pdf" value="' +
-          escapeHtml(state.upload_name) +
-          '">' +
-          '<div class="lockie-configurator__note">Accepted: pdf, png, ai, jpg.</div>' +
-          "</div>";
-      }
-      html += "</div>";
+      html += renderModeField(state, {
+        idPrefix: "lc-design",
+        label: "Design",
+        modeKey: "design_mode",
+        modeOptions: designModeOptions,
+        popularItems: designs.length ? designs : null,
+        popularValueKey: "design_code",
+        popularOptionText: function (d) { return d.code + " — " + d.description; },
+        customValueKey: uploadAllowed ? "upload_name" : null,
+        customPlaceholder: "(prototype) type a filename e.g. our-logo.pdf",
+        customNote: uploadAllowed ? "Accepted: pdf, png, ai, jpg." : null,
+        chartUrl: chartUrls.designs || null,
+        chartLinkText: "View designs chart",
+      });
     }
 
     el.innerHTML = html;
 
-    var vs = el.querySelector("#lc-verse");
-    if (vs) {
-      vs.addEventListener("change", function (e) {
-        state.verse = e.target.value;
-        var wrap = el.querySelector("#lc-cv-wrap");
-        if (wrap) wrap.style.display = e.target.value === "__custom" ? "block" : "none";
+    if (verseEnabled) {
+      wireModeField(el, state, {
+        idPrefix: "lc-verse",
+        modeKey: "verse_mode",
+        popularValueKey: "verse_code",
+        customValueKey: verseAllowCustom ? "custom_verse" : null,
       });
     }
-    var ds = el.querySelector("#lc-design");
-    if (ds) {
-      ds.addEventListener("change", function (e) {
-        state.design = e.target.value;
-        var wrap = el.querySelector("#lc-up-wrap");
-        if (wrap) wrap.style.display = e.target.value === "__upload" ? "block" : "none";
+    if (designEnabled) {
+      wireModeField(el, state, {
+        idPrefix: "lc-design",
+        modeKey: "design_mode",
+        popularValueKey: "design_code",
+        customValueKey: uploadAllowed ? "upload_name" : null,
       });
     }
-    var cv = el.querySelector("#lc-cverse");
-    if (cv) cv.addEventListener("input", function (e) { state.custom_verse = e.target.value; });
-    var up = el.querySelector("#lc-upload");
-    if (up) up.addEventListener("input", function (e) { state.upload_name = e.target.value; });
   }
 
   function renderNumbering(el, ctx) {
@@ -594,6 +763,10 @@
     var config = readJSON(root.dataset.configId);
     var priceTable = readJSON(root.dataset.priceTableId);
     var addonFees = readJSON(root.dataset.addonFeesId);
+    var verses = readJSON(root.dataset.versesId) || [];
+    var designs = readJSON(root.dataset.designsId) || [];
+    var chartUrls = readJSON(root.dataset.chartUrlsId) || {};
+    var variantId = root.dataset.variantId;
 
     if (!config || !config.steps) {
       console.error("[lockie-configurator] block " + blockId + " has no usable config metafield — nothing to render.");
@@ -603,6 +776,7 @@
     var stepperEl = document.getElementById("lockie-configurator-stepper-" + blockId);
     var stepsEl = document.getElementById("lockie-configurator-steps-" + blockId);
     var addCartEl = document.getElementById("lockie-configurator-addcart-" + blockId);
+    var addCartErrEl = document.getElementById("lockie-configurator-addcart-err-" + blockId);
     var linesEl = document.getElementById("lockie-configurator-lines-" + blockId);
     var totalEl = document.getElementById("lockie-configurator-total-" + blockId);
     var unitNoteEl = document.getElementById("lockie-configurator-unit-note-" + blockId);
@@ -689,9 +863,12 @@
       envelope_colour: null,
       text_colour: null,
       headings: {},
-      verse: null,
+      headings_mode: "new",
+      verse_mode: "none",
+      verse_code: "",
       custom_verse: "",
-      design: null,
+      design_mode: "none",
+      design_code: "",
       upload_name: "",
       num_from: "",
       num_to: "",
@@ -714,6 +891,9 @@
       config: config,
       priceTable: priceTable,
       addonFees: addonFees,
+      verses: verses,
+      chartUrls: chartUrls,
+      designs: designs,
       state: state,
       refresh: refreshSummary,
       formatCurrency: function (n) { return totalFormatter.format(n); },
@@ -792,16 +972,194 @@
       refreshSummary();
     }
 
+    // Re-checks every step, not just the current one — the Finish click that
+    // enables the button only validated the *last* step reached. A customer
+    // can hit Back afterwards and break an earlier step (e.g. widen the
+    // numbering range out of match) without the button ever re-disabling, so
+    // this is the actual gate on what reaches checkout.
+    function validateAllSteps() {
+      for (var i = 0; i < steps.length; i++) {
+        var msg = steps[i].validate(ctx);
+        if (msg) return { index: i, message: msg };
+      }
+      return null;
+    }
+
+    // Looks up a popular verse/design's resolved display text ("V3 — The
+    // Lord blesses...", "C1 — Praying hands") from the code the customer
+    // picked. Returns "" for previous/none modes (nothing to show) or a
+    // custom mode's own free text — see buildDisplayFields.
+    function resolveSelectedVerse() {
+      if (state.verse_mode === "custom") return state.custom_verse || "";
+      if (state.verse_mode !== "popular") return "";
+      var match = verses.filter(function (v) { return v.code === state.verse_code; })[0];
+      return match ? match.code + " — " + match.text : "";
+    }
+
+    function resolveSelectedDesign() {
+      if (state.design_mode === "custom") return state.upload_name || "";
+      if (state.design_mode !== "popular") return "";
+      var match = designs.filter(function (d) { return d.code === state.design_code; })[0];
+      return match ? match.code + " — " + match.description : "";
+    }
+
+    // Builds the ordered [label, value] pairs that become the customer/office
+    // -visible rows on the checkout/order — mirrors the WooCommerce layout
+    // (Quantity, Box Colour, Envelope Colour, Text Colour, Heading, per-line
+    // heading values, Verse, Selected Verse, Design, Selected Design,
+    // Numbered from/to, Excluded Numbers, Full Number Range, Holyday
+    // specials, Specials, Start Date, Notes). Array order here is exactly
+    // the order the Function will emit the exploded attributes in — see
+    // explodeDisplayFields in cart_transform_run.ts.
+    function buildDisplayFields() {
+      var fields = [];
+      function push(label, value) {
+        if (value !== null && value !== undefined && value !== "") fields.push([label, value]);
+      }
+
+      push("Quantity", String(state.qty));
+      push("Box Colour", state.box_colour);
+      push("Envelope Colour", state.envelope_colour);
+      push("Text Colour", state.text_colour);
+
+      push("Heading", HEADINGS_MODE_LABELS[state.headings_mode] || state.headings_mode);
+      if (state.headings_mode === "new") {
+        (config.steps.headings.lines || []).forEach(function (line) {
+          push(line, state.headings[line]);
+        });
+      }
+
+      push("Verse", VERSE_MODE_LABELS[state.verse_mode] || state.verse_mode);
+      push("Selected Verse", resolveSelectedVerse());
+      push("Design", DESIGN_MODE_LABELS[state.design_mode] || state.design_mode);
+      push("Selected Design", resolveSelectedDesign());
+
+      push("Numbered from", state.num_from);
+      push("Numbered to", state.num_to);
+      fields.push(["Excluded Numbers", state.excluded || "None"]);
+      push("Full Number Range", formatNumberRange(state.num_from, state.num_to, state.excluded));
+
+      fields.push(["Holyday specials", state.holydays > 0 ? String(state.holydays) : "None"]);
+      push("Specials", state.specials.join(", "));
+
+      push("Start Date", state.start_date);
+      push("Notes", state.notes);
+
+      return fields;
+    }
+
+    // Stage 3 cart payload — see CLAUDE.md "Line item properties written on
+    // add-to-basket" and metafield-schema.md for the shape this mirrors.
+    // Pricing-critical properties are sent individually because they're what
+    // cart_transform_run.graphql queries by name; _special_numbering must be
+    // "yes"/"no" (the Function checks `=== "yes"` literally) and comes from
+    // hasSpecialNumbering(state) — the exact function the live £12 summary
+    // line uses, so the two can never disagree.
+    //
+    // Everything else — the WooCommerce-style display rows plus the
+    // calc_unit_price/calc_line_total audit values — is bundled into one
+    // _display_fields_json attribute (still just one query-complexity unit
+    // for the Function to fetch) as { display: [...], audit: [...] }
+    // label/value pairs. The Function explodes `display` into visible
+    // attributes and `audit` back into `_`-prefixed hidden ones on its way
+    // onto the final order — see explodeDisplayFields in
+    // cart_transform_run.ts. This is why the office sees clean labelled rows
+    // instead of a raw JSON blob without the Function's input query ever
+    // exceeding its 30-point complexity cap.
+    function buildCartProperties() {
+      var Pricing = window.LockieConfiguratorPricing;
+      var qty = state.qty;
+      var unit = Pricing.findUnitPrice(priceTable.bands, qty);
+      var lineTotal = Pricing.computeLineTotal({
+        qty: qty,
+        priceTable: priceTable,
+        addonFees: addonFees,
+        specialNumbering: hasSpecialNumbering(state),
+        specialsCount: state.specials.length,
+        holyDaysCount: state.holydays,
+      });
+
+      var displayFieldsJson = {
+        display: buildDisplayFields(),
+        audit: [
+          ["calc_unit_price", unit],
+          ["calc_line_total", lineTotal],
+        ],
+      };
+
+      return {
+        _quantity: String(qty),
+        _special_numbering: hasSpecialNumbering(state) ? "yes" : "no",
+        _specials: state.specials.join(","),
+        _holydays_count: String(state.holydays),
+        _display_fields_json: JSON.stringify(displayFieldsJson),
+      };
+    }
+
     addCartEl.addEventListener("click", function () {
-      // Stage 3 wires the real /cart/add.js call. For now, just prove the
-      // button is reachable once every step has validated cleanly.
-      console.log("[lockie-configurator] block " + blockId + " ready to add to cart with state:", state);
+      if (addCartErrEl) addCartErrEl.textContent = "";
+
+      var invalid = validateAllSteps();
+      if (invalid) {
+        state.step = invalid.index;
+        sync();
+        var errEl = stepsEl.querySelector("#lc-step-err");
+        if (errEl) errEl.textContent = invalid.message;
+        return;
+      }
+
+      if (!variantId) {
+        if (addCartErrEl) addCartErrEl.textContent = "This product has no purchasable variant — contact support.";
+        return;
+      }
+
+      var properties;
+      try {
+        properties = buildCartProperties();
+      } catch (err) {
+        if (addCartErrEl) addCartErrEl.textContent = "Could not price this configuration — check the quantity and try again.";
+        return;
+      }
+
+      var originalLabel = addCartEl.textContent;
+      addCartEl.disabled = true;
+      addCartEl.textContent = "Adding…";
+
+      // quantity is always 1 here — the customer's real box count travels as
+      // the _quantity property instead. See CLAUDE.md's Hard rules: the Cart
+      // Transform Function needs the parent line's own quantity pinned at 1
+      // for the exact-to-the-penny fixedPricePerUnit override to work; if
+      // this ever adds with quantity > 1, the Function still prices it, just
+      // not cent-exact.
+      fetch("/cart/add.js", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          id: Number(variantId),
+          quantity: 1,
+          properties: properties,
+        }),
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            if (!res.ok) throw new Error(body.description || body.message || "Could not add to basket.");
+            return body;
+          });
+        })
+        .then(function () {
+          window.location.href = "/checkout";
+        })
+        .catch(function (err) {
+          addCartEl.disabled = false;
+          addCartEl.textContent = originalLabel;
+          if (addCartErrEl) addCartErrEl.textContent = err.message || "Could not add to basket. Please try again.";
+        });
     });
 
     sync();
 
     window.__lockieConfigurator = window.__lockieConfigurator || {};
-    window.__lockieConfigurator[blockId] = { config: config, priceTable: priceTable, addonFees: addonFees, state: state };
+    window.__lockieConfigurator[blockId] = { config: config, priceTable: priceTable, addonFees: addonFees, verses: verses, designs: designs, chartUrls: chartUrls, state: state };
   }
 
   document.querySelectorAll("[data-lockie-configurator]").forEach(createWizard);

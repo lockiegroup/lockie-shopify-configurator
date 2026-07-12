@@ -7,7 +7,7 @@ query CartTransformRunInput {
       specialNumbering: attribute(key: "_special_numbering") { key value }
       specials: attribute(key: "_specials") { key value }
       holyDaysCount: attribute(key: "_holydays_count") { key value }
-      configJson: attribute(key: "_config_json") { key value }
+      displayFieldsJson: attribute(key: "_display_fields_json") { key value }
       merchandise {
         ... on ProductVariant {
           id

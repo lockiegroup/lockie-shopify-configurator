@@ -1,11 +1,11 @@
 {%- comment -%}
   Lockie Church configurator wizard.
 
-  Reads custom.config / custom.price_table / custom.addon_fees off the
-  product carrying this block and injects them as inline JSON — no AJAX
-  fetch needed, Liquid already has them at render time. Renders identically
-  for any product; Tier 2 (Weekly) vs Tier 3 (Economy) is entirely a
-  difference in what these metafields contain.
+  Reads custom.config / custom.price_table / custom.addon_fees / custom.verses
+  / custom.designs / custom.chart_urls off the product carrying this block and
+  injects them as inline JSON — no AJAX fetch needed, Liquid already has them
+  at render time. Renders identically for any product; Tier 2 (Weekly) vs
+  Tier 3 (Economy) is entirely a difference in what these metafields contain.
 
   shop.currency (not the price_table metafield's own "currency" field, which
   is descriptive only) drives display formatting in configurator.js — see
@@ -14,11 +14,18 @@
   pricing.js must load before configurator.js: it's the shared, tested
   price-calc core (mirrors the Cart Transform Function's pricing.ts) that
   the wizard's live total display reads from.
+
+  Stage 3: data-variant-id feeds configurator.js's /cart/add.js call on
+  "Add to basket" — see its own header comment for the payload shape.
 {%- endcomment -%}
 
 {%- assign lc_config = block.settings.product.metafields.custom.config.value -%}
 {%- assign lc_price_table = block.settings.product.metafields.custom.price_table.value -%}
 {%- assign lc_addon_fees = block.settings.product.metafields.custom.addon_fees.value -%}
+{%- assign lc_verses = block.settings.product.metafields.custom.verses.value -%}
+{%- assign lc_designs = block.settings.product.metafields.custom.designs.value -%}
+{%- assign lc_chart_urls = block.settings.product.metafields.custom.chart_urls.value -%}
+{%- assign lc_variant = block.settings.product.selected_or_first_available_variant -%}
 
 {{ 'configurator.css' | asset_url | stylesheet_tag }}
 
@@ -29,6 +36,10 @@
   data-config-id="lockie-configurator-config-{{ block.id }}"
   data-price-table-id="lockie-configurator-price-table-{{ block.id }}"
   data-addon-fees-id="lockie-configurator-addon-fees-{{ block.id }}"
+  data-verses-id="lockie-configurator-verses-{{ block.id }}"
+  data-designs-id="lockie-configurator-designs-{{ block.id }}"
+  data-chart-urls-id="lockie-configurator-chart-urls-{{ block.id }}"
+  data-variant-id="{{ lc_variant.id }}"
   data-shop-currency="{{ shop.currency }}"
   {{ block.shopify_attributes }}
 >
@@ -40,6 +51,15 @@
   </script>
   <script type="application/json" id="lockie-configurator-addon-fees-{{ block.id }}">
     {{ lc_addon_fees | json }}
+  </script>
+  <script type="application/json" id="lockie-configurator-verses-{{ block.id }}">
+    {{ lc_verses | json }}
+  </script>
+  <script type="application/json" id="lockie-configurator-designs-{{ block.id }}">
+    {{ lc_designs | json }}
+  </script>
+  <script type="application/json" id="lockie-configurator-chart-urls-{{ block.id }}">
+    {{ lc_chart_urls | json }}
   </script>
 
   <ol class="lockie-configurator__steps-nav" id="lockie-configurator-stepper-{{ block.id }}"></ol>
@@ -64,6 +84,7 @@
         >
           Add to basket
         </button>
+        <div class="lockie-configurator__err" id="lockie-configurator-addcart-err-{{ block.id }}"></div>
       </div>
     </aside>
   </div>

@@ -100,6 +100,20 @@
 .lockie-configurator__label .lockie-configurator__req {
   color: var(--lc-accent);
 }
+.lockie-configurator__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lockie-configurator__label-row .lockie-configurator__label {
+  margin-bottom: 6px;
+}
+.lockie-configurator__chart-link {
+  font-size: 0.78rem;
+  color: var(--lc-accent);
+  white-space: nowrap;
+}
 .lockie-configurator__note {
   font-size: 0.74rem;
   color: var(--lc-muted);

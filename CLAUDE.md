@@ -65,14 +65,26 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    ✅ **DONE and verified end-to-end** — see "Tier 3 (Economy) spike — proven"
    below. Full options-locking behaviour still needs the wizard UI to actually
    verify (step 8).
-5. **Next up:** build the theme app extension wizard, porting the logic from
+5. Build the theme app extension wizard, porting the logic from
    `weekly-configurator.html`, reading the metafields. Must add-to-cart with
    `quantity: 1` and write `_quantity` — see Hard rules.
-6. Wire uploads; confirm the file URL survives onto the paid order.
+   ✅ **DONE** — Stage 0–2 (rendering/validation, live pricing), the
+   headings/verse/design UX pass, and Stage 3 (`/cart/add.js` + redirect to
+   checkout) all landed and are verified end-to-end — see "Stage 3 — proven"
+   below.
+6. **Next up:** wire uploads; confirm the file URL survives onto the paid order.
 7. Full end-to-end test on the dev store: configure → live total → checkout → paid
    order shows correct charge + all line item properties + file.
+   ✅ **DONE for Weekly, minus the file** — real order #1001 placed via the
+   actual wizard UI: checkout showed the correct GBP total and the full
+   clean labelled breakdown, the paid order carries all of it plus the
+   hidden audit properties. See "Stage 3 — proven" below. No file yet since
+   uploads (step 6) aren't wired — design/holyday uploads are still the
+   Stage 3 stub filename, not a real URL.
 8. Confirm Tier 3 (Economy) end-to-end through the actual wizard (options
    correctly locked, simpler price table) — no code changes, config only.
+   **Not yet done** — Stage 3's real-order proof so far only covers Weekly;
+   Economy needs the same live add-to-cart → checkout → paid-order pass.
 9. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -96,8 +108,11 @@ store) via `/cart/add.js` + real checkout, no theme/wizard UI involved:
   quantity squaring the total, and per-unit rounding drift on quantities > 1.
 
 Remaining open item from this spike: confirm production (lockiechurch.com)'s
-actual currency is GBP before go-live — the dev store here is USD, which was
-fine for proving the pricing math but not representative of the real store.
+actual currency is GBP before go-live. Update: the dev store now displays and
+charges in GBP (£163.32 confirmed at checkout and on the paid order in the
+Stage 3 end-to-end test below), so the wizard/Function pricing math is
+validated in the right currency — still worth a final sanity check that the
+production store's own currency/presentment settings match before go-live.
 
 ### Tier 3 (Economy) spike — proven
 
@@ -123,6 +138,34 @@ instead of hardcoding Weekly) with its own `custom.price_table`/`custom.addon_fe
 The qty-24 anomaly (Economy priced £2.70 in old WooCommerce data vs. £2.78 on
 either side) was resolved as **legacy noise**, not a deliberate break — seeded
 as one flat 20–39 band at £2.78. See Hard rules below.
+
+### Stage 3 — proven
+
+Confirmed live on the dev store, this time through the actual wizard UI (not
+an AJAX spike) — configured Weekly Boxed Sets end-to-end and placed a real
+paid test order (#1001):
+
+- Wizard configured with qty 52, verse V18, design D1, numbering range with
+  exclusions producing "Full Number Range" `1-12, 14-53`, 2 specials
+  (Christmas, Easter) — "Add to basket" → `/cart/add.js` with `quantity: 1`
+  and the real box count in `_quantity` → redirect to `/checkout`.
+- Checkout charged **exactly £163.32**, recomputed server-side by the
+  Function from the same 4 hidden pricing attributes as the earlier AJAX
+  spike — proves the wizard's real add-to-cart call reproduces the spike's
+  proven pricing path exactly, not just in theory.
+- Checkout also displayed the full clean labelled breakdown (Quantity,
+  colours, Verse, Selected Verse, Design, Selected Design, Full Number Range,
+  Specials, etc.) to the customer, in GBP.
+- The paid order in Shopify admin shows the same clean labelled rows for
+  fulfilment, plus the hidden audit properties (`_quantity`,
+  `_special_numbering`, `_specials`, `_holydays_count`, `_calc_unit_price`,
+  `_calc_line_total`) — confirms `explodeDisplayFields` in
+  `cart_transform_run.ts` correctly explodes `_display_fields_json` into
+  individually-keyed order attributes without the Function's input query
+  exceeding its 30-point complexity cap.
+- This is the first proof of the whole chain running through the real UI a
+  customer will use, not a manual `/cart/add.js` spike — wizard → cart →
+  Cart Transform → checkout → paid order, all matching.
 
 ## Hard rules and known gotchas
 
@@ -151,11 +194,15 @@ as one flat 20–39 band at £2.78. See Hard rules below.
   `lineTotal` directly — no division, no rounding drift. If the wizard ever adds with
   quantity > 1 (legacy/ad-hoc testing), the Function falls back to dividing by it, same
   as before — valid but not cent-exact.
-- **Function input query complexity cap is 30.** Each individual `attribute(key:)`
-  lookup costs 2, and `CartLine` has no bulk/plural attributes field — querying all
-  ~22 `_`-prefixed properties individually (53) exceeds the cap. Only `_quantity`,
-  `_special_numbering`, `_specials`, and `_holydays_count` are queried/passed through
-  individually; see the line item properties section below for how the rest are handled.
+- **Function input query complexity cap is 30 — this limits reading, not the order's
+  final property count.** Each individual `attribute(key:)` lookup costs 2, and
+  `CartLine` has no bulk/plural attributes field — querying ~20 properties individually
+  would blow the cap. Only `_quantity`, `_special_numbering`, `_specials`, and
+  `_holydays_count` are queried individually; everything else arrives as one
+  `_display_fields_json` attribute (one query-complexity unit) that the Function then
+  explodes into many individually-keyed OUTPUT attributes — building the output
+  `attributes` array isn't complexity-limited, only the input query is. See the line
+  item properties section below.
 - **One Cart Transform function per app.** This function must be the sole owner of
   configured-product pricing. Don't install another app that also uses Cart Transform
   against these products.
@@ -189,19 +236,43 @@ line totals). `_quantity` carries the customer's real box count and is what
 the Function and front-end must use for all pricing math instead of the
 native cart quantity.
 
-Kept as individual named properties (queried and pricing-relevant, and worth
-fulfilment seeing as their own columns): `_quantity`, `_special_numbering`,
-`_specials`, `_holydays_count`.
+Kept as individual named properties (queried by the Function for pricing;
+hidden — underscore-prefixed, audit/debug only, not meant for customer/office
+display): `_quantity`, `_special_numbering`, `_specials`, `_holydays_count`.
 
-Everything else is written as a single JSON-encoded `_config_json` property
-(the Cart Transform Function's input query complexity cap of 30 doesn't allow
-querying ~22 properties individually — see Hard rules above):
-`_box_colour, _envelope_colour, _text_colour, _heading_1.._heading_4,
-_verse | _verse_custom, _design | _design_upload_url, _numbering_from,
-_numbering_to, _excluded_numbers, _holyday_upload_url, _start_date, _notes,
-_calc_unit_price, _calc_line_total`. The Function passes `_config_json` through
-opaquely onto the expanded line without parsing it — fulfilment/admin tooling
-is responsible for decoding it for display.
+**Order-display pass:** everything else — the WooCommerce-style breakdown
+(Quantity, Box Colour, Envelope Colour, Text Colour, Heading, per-line
+heading values, Verse, Selected Verse, Design, Selected Design, Numbered
+from/to, Excluded Numbers, Full Number Range, Holyday specials, Specials,
+Start Date, Notes) plus the `calc_unit_price`/`calc_line_total` audit
+values — is bundled by `buildCartProperties`/`buildDisplayFields` in
+configurator.js into ONE `_display_fields_json` property:
+```json
+{
+  "display": [["Quantity", "52"], ["Box Colour", "Stained Glass"], ["Church/Charity Name", "St Mary's"], ...],
+  "audit": [["calc_unit_price", 3.140769231], ["calc_line_total", 163.32]]
+}
+```
+This stays one JSON attribute (one query-complexity unit to fetch) for the
+same reason as before — the cap doesn't allow querying ~20 properties
+individually. What's different: the Function no longer passes it through
+opaquely. `explodeDisplayFields` in `cart_transform_run.ts` parses it and
+emits each `display` pair as its own visible attribute (no underscore — so it
+shows to both the customer at checkout and fulfilment on the order) and each
+`audit` pair re-hidden with a `_` prefix. Building the *output* `attributes`
+array isn't complexity-limited (only the input query is), so this is how the
+final order gets clean "Label: Value" rows instead of a JSON blob without the
+Function's 30-point input-query cap ever being exceeded.
+
+"Full Number Range" is a compact contiguous-run string (`"1-12, 14-53"`), not
+every number spelled out — line item property values have a practical length
+limit and ranges can run into the hundreds.
+
+`headings_mode` is one dropdown for the whole step (not per-line — see the
+headings UX fix). `design_upload_name`/"Selected Design" for a custom image is
+the Stage 3 stub filename; the real upload URL lands here once uploads are
+wired (step 6). "Use previous" is a flag only — it never looks up order
+history, fulfilment actions it manually.
 
 Underscore prefix = hidden from customer, visible to fulfilment on the order.
 
@@ -218,3 +289,6 @@ Underscore prefix = hidden from customer, visible to fulfilment on the order.
 - `metafield-schema.md` — the metafield shapes for all three tiers.
 - `price-table-weekly.json` — Weekly banded price table (paste into `custom.price_table`).
 - `weekly-configurator.html` — standalone prototype of the flow + pricing UX (logic reference).
+- `verse-design-catalogue.md` — source transcription of the full verse/design stock list.
+- `verse-catalogue.json` / `design-catalogue.json` — that catalogue as the JSON seeded into
+  `custom.verses` / `custom.designs` on both products by `scripts/setup-dev-store.mjs`.

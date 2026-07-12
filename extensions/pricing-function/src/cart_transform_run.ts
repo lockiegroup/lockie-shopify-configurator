@@ -18,6 +18,40 @@ function collectAttributes(attrs: LineAttribute[]): Array<{ key: string; value: 
     .map(({ key, value }) => ({ key, value }));
 }
 
+type LabelValuePair = [string, unknown];
+
+// The wizard bundles every non-pricing-critical field (headings, verse,
+// design, numbering range, notes, plus the audit-only calc_unit_price/
+// calc_line_total) into ONE _display_fields_json attribute so fetching it
+// costs a single query-complexity unit — see the cap note on `attributes`
+// below for why that matters. This explodes it into individually-keyed
+// attributes on the way OUT, which isn't complexity-limited (only the input
+// query is), so the final order ends up with clean "Label: Value" rows
+// instead of a JSON blob without the Function's query ever exceeding its
+// 30-point cap. `display` entries become customer/office-visible attributes
+// (no underscore); `audit` entries are re-hidden with a `_` prefix — same
+// mechanism, different purpose, both free once the one JSON attribute is in
+// hand.
+function explodeDisplayFields(json: string | null | undefined): Array<{ key: string; value: string }> {
+  if (!json) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const { display, audit } = parsed as { display?: LabelValuePair[]; audit?: LabelValuePair[] };
+
+  const toAttributes = (pairs: LabelValuePair[] | undefined, keyPrefix: string) =>
+    (Array.isArray(pairs) ? pairs : [])
+      .filter((pair): pair is LabelValuePair => Array.isArray(pair) && pair.length === 2)
+      .filter(([, value]) => value !== null && value !== undefined && value !== "")
+      .map(([key, value]) => ({ key: keyPrefix + String(key), value: String(value) }));
+
+  return [...toAttributes(display, ""), ...toAttributes(audit, "_")];
+}
+
 export function cartTransformRun(input: CartTransformRunInput): CartTransformRunResult {
   const operations: CartTransformRunResult["operations"] = [];
 
@@ -50,17 +84,17 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     // Function input queries have a max complexity of 30, and each individual
     // attribute(key:) lookup costs 2 — not enough budget to query all ~22
     // `_`-prefixed properties individually. The pricing-relevant ones are kept
-    // as their own named attributes; everything else (headings, verse, design,
-    // numbering range, notes, upload URLs, etc.) is written by the theme wizard
-    // as a single JSON-encoded `_config_json` attribute and passed through
-    // opaquely here without the function needing to parse it.
-    const attributes = collectAttributes([
-      line.orderedQuantity,
-      line.specialNumbering,
-      line.specials,
-      line.holyDaysCount,
-      line.configJson,
-    ]);
+    // as their own named attributes (hidden — audit/debug only, not meant for
+    // customer/office display); everything else (headings, verse, design,
+    // numbering range, notes, calc_unit_price/calc_line_total) arrives as one
+    // JSON-encoded `_display_fields_json` attribute and is exploded into
+    // individually-keyed, human-labelled attributes by explodeDisplayFields
+    // above — see its own comment for why this is the one JSON attribute that
+    // still fits the complexity cap while producing clean order rows.
+    const attributes = [
+      ...collectAttributes([line.orderedQuantity, line.specialNumbering, line.specials, line.holyDaysCount]),
+      ...explodeDisplayFields(line.displayFieldsJson?.value),
+    ];
 
     // Checkout rounds fixedPricePerUnit to 2dp *before* multiplying by
     // parent_qty × item_qty — confirmed live (qty 52 at "3.140769231"/unit

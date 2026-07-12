@@ -12,7 +12,10 @@
             "specialNumbering": { "key": "_special_numbering", "value": "yes" },
             "specials": { "key": "_specials", "value": "Christmas,Easter" },
             "holyDaysCount": null,
-            "configJson": { "key": "_config_json", "value": "{\"box_colour\":\"Stained Glass\",\"heading_1\":\"St. Mary's Church\"}" },
+            "displayFieldsJson": {
+              "key": "_display_fields_json",
+              "value": "{\"display\":[[\"Quantity\",\"52\"],[\"Box Colour\",\"Stained Glass\"],[\"Church/Charity Name\",\"St. Mary's Church\"]],\"audit\":[[\"calc_unit_price\",\"2.810046\"],[\"calc_line_total\",\"163.32\"]]}"
+            },
             "merchandise": {
               "id": "gid://shopify/ProductVariant/48828363342068",
               "product": {
@@ -50,7 +53,11 @@
                   { "key": "_quantity", "value": "52" },
                   { "key": "_special_numbering", "value": "yes" },
                   { "key": "_specials", "value": "Christmas,Easter" },
-                  { "key": "_config_json", "value": "{\"box_colour\":\"Stained Glass\",\"heading_1\":\"St. Mary's Church\"}" }
+                  { "key": "Quantity", "value": "52" },
+                  { "key": "Box Colour", "value": "Stained Glass" },
+                  { "key": "Church/Charity Name", "value": "St. Mary's Church" },
+                  { "key": "_calc_unit_price", "value": "2.810046" },
+                  { "key": "_calc_line_total", "value": "163.32" }
                 ],
                 "price": {
                   "adjustment": {

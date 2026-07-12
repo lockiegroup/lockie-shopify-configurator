@@ -12,7 +12,7 @@
             "specialNumbering": null,
             "specials": null,
             "holyDaysCount": null,
-            "configJson": null,
+            "displayFieldsJson": null,
             "merchandise": {
               "id": "gid://shopify/ProductVariant/1",
               "product": {

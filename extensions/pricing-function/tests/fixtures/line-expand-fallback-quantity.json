@@ -12,7 +12,7 @@
             "specialNumbering": { "key": "_special_numbering", "value": "yes" },
             "specials": { "key": "_specials", "value": "Christmas,Easter" },
             "holyDaysCount": null,
-            "configJson": null,
+            "displayFieldsJson": null,
             "merchandise": {
               "id": "gid://shopify/ProductVariant/48828363342068",
               "product": {

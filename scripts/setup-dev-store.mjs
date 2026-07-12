@@ -157,6 +157,21 @@ const ADDON_FEES_WEEKLY = JSON.parse(
   readFileSync(resolve(ROOT, "addon-fees-weekly.json"), "utf8")
 );
 
+// Stock verse/design lists — identical across Weekly/Economy (see
+// verse-design-catalogue.md), so seeded onto both products unchanged rather
+// than duplicated inline here.
+const VERSE_CATALOGUE = JSON.parse(readFileSync(resolve(ROOT, "verse-catalogue.json"), "utf8"));
+const DESIGN_CATALOGUE = JSON.parse(readFileSync(resolve(ROOT, "design-catalogue.json"), "utf8"));
+
+// "View verses/designs chart" link targets — same PDFs on both products.
+// Data-driven/swappable like everything else: update these two URLs (or move
+// to a JSON file, following the verse/design catalogue pattern) rather than
+// hardcoding a link anywhere in configurator.js.
+const CHART_URLS = {
+  verses: "https://cdn.shopify.com/s/files/1/0835/8507/3396/files/VERSES-2020.pdf?v=1783812553",
+  designs: "https://cdn.shopify.com/s/files/1/0835/8507/3396/files/designs-2020.pdf?v=1783812555",
+};
+
 const CONFIG_WEEKLY = {
   min_quantity: 20,
   uploads_enabled: true,
@@ -174,7 +189,7 @@ const CONFIG_WEEKLY = {
     design: {
       enabled: true,
       verse:  { enabled: true, allow_custom: true },
-      design: { enabled: true, allow_custom: true, allow_upload: true },
+      design: { enabled: true, allow_upload: true },
     },
     numbering: {
       enabled: true,
@@ -218,7 +233,7 @@ const CONFIG_ECONOMY = {
     design: {
       enabled: true,
       verse:  { enabled: true, allow_custom: true },
-      design: { enabled: true, allow_custom: true, allow_upload: false },
+      design: { enabled: true, allow_upload: false },
     },
     numbering: {
       enabled: true,
@@ -232,8 +247,8 @@ const CONFIG_ECONOMY = {
 };
 
 const PRODUCTS = [
-  { title: "Weekly Boxed Sets",  priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY  },
-  { title: "Economy Boxed Sets", priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY },
+  { title: "Weekly Boxed Sets",  priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Economy Boxed Sets", priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
 ];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────
@@ -252,6 +267,9 @@ function ensureMetafieldDefinitions() {
     { key: "config",      name: "Configurator Config" },
     { key: "price_table", name: "Price Table"          },
     { key: "addon_fees",  name: "Add-on Fees"          },
+    { key: "verses",      name: "Verse Catalogue"       },
+    { key: "designs",     name: "Design Catalogue"      },
+    { key: "chart_urls",  name: "Chart URLs"             },
   ];
 
   for (const { key, name } of DEFS) {
@@ -330,7 +348,7 @@ function ensureProduct(title) {
 
 // ── Step 3: Attach metafield values ──────────────────────────────────────────
 
-function attachMetafields(productGid, title, { priceTable, addonFees, config }) {
+function attachMetafields(productGid, title, { priceTable, addonFees, config, verses, designs, chartUrls }) {
   console.log(`\n── 3. Metafield values on ${title}`);
 
   // metafieldsSet is an upsert — creates or updates, always idempotent.
@@ -346,6 +364,9 @@ function attachMetafields(productGid, title, { priceTable, addonFees, config }) 
         { namespace: "custom", key: "price_table", type: "json", ownerId: productGid, value: JSON.stringify(priceTable) },
         { namespace: "custom", key: "addon_fees",  type: "json", ownerId: productGid, value: JSON.stringify(addonFees)  },
         { namespace: "custom", key: "config",      type: "json", ownerId: productGid, value: JSON.stringify(config)    },
+        { namespace: "custom", key: "verses",      type: "json", ownerId: productGid, value: JSON.stringify(verses)    },
+        { namespace: "custom", key: "designs",     type: "json", ownerId: productGid, value: JSON.stringify(designs)   },
+        { namespace: "custom", key: "chart_urls",  type: "json", ownerId: productGid, value: JSON.stringify(chartUrls) },
       ],
     },
     true
@@ -379,9 +400,9 @@ function attachMetafields(productGid, title, { priceTable, addonFees, config }) 
 console.log(`\nConfiguring dev store: https://${STORE}`);
 try {
   ensureMetafieldDefinitions();
-  for (const { title, priceTable, addonFees, config } of PRODUCTS) {
+  for (const { title, priceTable, addonFees, config, verses, designs, chartUrls } of PRODUCTS) {
     const productGid = ensureProduct(title);
-    attachMetafields(productGid, title, { priceTable, addonFees, config });
+    attachMetafields(productGid, title, { priceTable, addonFees, config, verses, designs, chartUrls });
   }
   console.log("\nAll done. Re-run at any time — the script is idempotent.");
   console.log("CartTransform activation: run `shopify app deploy` then `shopify app dev` and open the app.\n");
