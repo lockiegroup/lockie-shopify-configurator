@@ -72,7 +72,48 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    headings/verse/design UX pass, and Stage 3 (`/cart/add.js` + redirect to
    checkout) all landed and are verified end-to-end — see "Stage 3 — proven"
    below.
-6. **Next up:** wire uploads; confirm the file URL survives onto the paid order.
+6. Wire uploads; confirm the file URL survives onto the paid order.
+   **Deferred, but a MUST-HAVE for launch — not dropped.** Two approaches
+   were assessed and rejected; a third is the front-runner for when this is
+   picked back up:
+   - ❌ *Self-hosted App Proxy → `stagedUploadsCreate`/`fileCreate` → Shopify
+     Files.* Rejected: needs an always-on production backend, which doesn't
+     exist. `application_url` in both `shopify.app*.toml` is still the
+     scaffold placeholder `https://example.com` — today the app only runs
+     via `shopify app dev`'s local process + Cloudflare tunnel on a dev
+     machine. The Cart Transform Function and theme extension never needed a
+     live backend (they run inside Shopify / are static respectively), so
+     this gap was invisible until uploads. Not pursuing this without
+     committing to real hosting (Fly.io/Render/Railway/VPS) first.
+   - ❌ *Third-party upload app (Uploadery/UploadKit/Upload-Lift etc.).*
+     Rejected: doesn't cleanly fit this wizard. These apps bind to either a
+     native `<form action="/cart/add">` (Uploadery — `form[data-uploadery]`)
+     or ship as their own independent Online Store 2.0 app block
+     (UploadKit/Upload-Lift). Our wizard has neither: `configurator.liquid`
+     has no `<form>`, add-to-cart is a plain `fetch("/cart/add.js", ...)` at
+     the end of the flow (`configurator.js`), and one app's theme-extension
+     block can't render inside another app's block — so their widget would
+     land as a separate page element, unable to be scoped to "only show
+     when design_mode is custom" or gate our own Next/Add-to-basket buttons.
+     Uploadery's `uploadSuccess` JS event might allow a headless-style
+     integration, but that's unconfirmed against vendor docs and still adds
+     a recurring cost and a third-party storage dependency for customer
+     artwork.
+   - ✅ **Front-runner: a minimal serverless upload relay** (Cloudflare
+     Worker + R2, or a single Vercel function) — no always-on server to
+     maintain, near-zero cost at this volume, returns a file URL that the
+     wizard drops straight into the existing `_display_fields_json` cart
+     properties alongside every other field. Needs: a Cloudflare or Vercel
+     account, the relay function itself, and wiring the Design "custom
+     image" and Holyday "upload your filled template" steps to call it —
+     otherwise the same shape as the rejected App Proxy plan, just without
+     the always-on hosting requirement.
+   - **Interim launch fallback if uploads slip:** ship without real uploads
+     and show an "email your artwork to [address] quoting your order
+     number" note in the Design/Holyday steps instead — acceptable short-term
+     since most orders use stock verses/designs, not custom uploads. Not a
+     substitute for building real uploads, just a way to not block launch on
+     them.
 7. Full end-to-end test on the dev store: configure → live total → checkout → paid
    order shows correct charge + all line item properties + file.
    ✅ **DONE for Weekly, minus the file** — real order #1001 placed via the
