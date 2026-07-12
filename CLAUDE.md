@@ -83,8 +83,10 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    Stage 3 stub filename, not a real URL.
 8. Confirm Tier 3 (Economy) end-to-end through the actual wizard (options
    correctly locked, simpler price table) — no code changes, config only.
-   **Not yet done** — Stage 3's real-order proof so far only covers Weekly;
-   Economy needs the same live add-to-cart → checkout → paid-order pass.
+   ✅ **DONE** — real paid order #1002, placed through the actual wizard UI
+   against Economy Boxed Sets, charged exactly **£110.28**. Same zero-code-change
+   proof as the earlier AJAX spike, now through the real UI: Step 8 is complete
+   for both tiers.
 9. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -217,6 +219,21 @@ paid test order (#1001):
   seeded as one flat 20–39 band at £2.78. See "Tier 3 (Economy) spike — proven".
 - **Sunday-only start date:** the start date step must validate that the chosen date
   is a Sunday.
+- **CartTransform activation is manual, not code.** An `afterAuth`/loader-based
+  auto-registration (`cartTransformCreate` on app install) was attempted and
+  abandoned — it never worked (Cloudflare tunnel errors during the auth flow).
+  The live CartTransform (`gid://shopify/CartTransform/127893748` on the dev
+  store) was activated by hand via GraphiQL running the `cartTransformCreate`
+  mutation directly. **This must be redone manually** (same mutation, via
+  GraphiQL or the Admin API) any time the app is reinstalled or moved to a new
+  store — there is no code that does this automatically, and none should be
+  built without solving the tunnel issue first.
+- **Two Partner app configs exist; `lockie-configurator-v2` is the live one.**
+  `shopify.app.toml` (client_id `6919f99c...`) is an earlier/unused config.
+  `shopify.app.lockie-configurator-v2.toml` (client_id `d0d9273512c...`) is
+  what the CLI is actually linked to (`.shopify/project.json`) and what
+  `deploy`/`dev` run against — use `--config lockie-configurator-v2` when the
+  CLI doesn't pick it up by default.
 
 ## Pricing formula (identical in front end and Function)
 
