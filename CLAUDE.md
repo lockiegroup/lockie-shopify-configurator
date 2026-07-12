@@ -334,6 +334,17 @@ history, fulfilment actions it manually.
 
 Underscore prefix = hidden from customer, visible to fulfilment on the order.
 
+## Launch checklist
+
+Items that only matter once a real production store exists — not actionable
+on the dev store, don't investigate early:
+
+- **Set the production Shopify store's currency to GBP at creation.** There
+  is no production store yet (still on WooCommerce) — this isn't a "check,"
+  it's a one-time setting to get right when the store is created. All pricing
+  proven so far (£163.32, £110.28, etc.) is dev-store math validated against
+  GBP price-table values; it depends on the real store also being set to GBP.
+
 ## Dev environment
 
 - Shopify Partner dev store (near-empty: Weekly Boxed Sets + Economy Boxed Sets
