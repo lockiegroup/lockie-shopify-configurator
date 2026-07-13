@@ -73,9 +73,9 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    checkout) all landed and are verified end-to-end — see "Stage 3 — proven"
    below.
 6. Wire uploads; confirm the file URL survives onto the paid order.
-   **Deferred, but a MUST-HAVE for launch — not dropped.** Two approaches
-   were assessed and rejected; a third is the front-runner for when this is
-   picked back up:
+   ✅ **DONE and verified end-to-end** — see "Uploads — proven" below. Two
+   approaches were assessed and rejected before landing on the front-runner,
+   which is what got built:
    - ❌ *Self-hosted App Proxy → `stagedUploadsCreate`/`fileCreate` → Shopify
      Files.* Rejected: needs an always-on production backend, which doesn't
      exist. `application_url` in both `shopify.app*.toml` is still the
@@ -110,29 +110,23 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
      fit. Works well on the owner's other store because that store uses an
      unmodified native product form — exactly Easify's target case, not
      ours.
-   - ✅ **Front-runner: a minimal serverless upload relay** (Cloudflare
-     Worker + R2, or a single Vercel function) — no always-on server to
-     maintain, near-zero cost at this volume, returns a file URL that the
-     wizard drops straight into the existing `_display_fields_json` cart
-     properties alongside every other field. Needs: a Cloudflare or Vercel
-     account, the relay function itself, and wiring the Design "custom
-     image" and Holyday "upload your filled template" steps to call it —
-     otherwise the same shape as the rejected App Proxy plan, just without
-     the always-on hosting requirement.
-   - **Interim launch fallback if uploads slip:** ship without real uploads
-     and show an "email your artwork to [address] quoting your order
-     number" note in the Design/Holyday steps instead — acceptable short-term
-     since most orders use stock verses/designs, not custom uploads. Not a
-     substitute for building real uploads, just a way to not block launch on
-     them.
+   - ✅ **Built: a minimal serverless upload relay** — `upload-worker/`, a
+     Cloudflare Worker + private R2 bucket (`lockie-uploads`), deployed and
+     proven both in isolation and now through the real wizard UI. The Design
+     step's "Add a custom image" mode and the Holyday step's optional
+     template upload both POST to it on file-select and get back a permanent
+     `/file/:key` URL, which lands in `_display_fields_json` alongside every
+     other field — exactly the shape planned here, no always-on app backend
+     needed.
+   - The "interim launch fallback" (email artwork, no real uploads) that was
+     tracked here while this was deferred is no longer needed — uploads are
+     live.
 7. Full end-to-end test on the dev store: configure → live total → checkout → paid
    order shows correct charge + all line item properties + file.
-   ✅ **DONE for Weekly, minus the file** — real order #1001 placed via the
-   actual wizard UI: checkout showed the correct GBP total and the full
-   clean labelled breakdown, the paid order carries all of it plus the
-   hidden audit properties. See "Stage 3 — proven" below. No file yet since
-   uploads (step 6) aren't wired — design/holyday uploads are still the
-   Stage 3 stub filename, not a real URL.
+   ✅ **DONE for Weekly, including the file** — real order #1001 placed via
+   the actual wizard UI proved the total + labelled breakdown; order #1003
+   (see "Uploads — proven" below) proved the same flow with real uploaded
+   files attached, both surviving onto the paid order as clickable URLs.
 8. Confirm Tier 3 (Economy) end-to-end through the actual wizard (options
    correctly locked, simpler price table) — no code changes, config only.
    ✅ **DONE** — real paid order #1002, placed through the actual wizard UI
@@ -220,6 +214,26 @@ paid test order (#1001):
 - This is the first proof of the whole chain running through the real UI a
   customer will use, not a manual `/cart/add.js` spike — wizard → cart →
   Cart Transform → checkout → paid order, all matching.
+
+### Uploads — proven
+
+Confirmed live on the dev store through the actual wizard UI — real paid test
+order (#1003) placed against Weekly Boxed Sets with both upload points used:
+
+- Design step's "Add a custom image" mode: uploaded a file, "Selected
+  Design" on checkout and on the paid order shows a real
+  `lockie-uploads.lockiegroup.workers.dev/file/...` URL (not the Stage 3
+  stub), and clicking it downloads the uploaded file.
+- Holyday step's optional template upload: a "Holyday Template" row appears
+  on the same order with its own Worker URL, same click-to-download
+  behaviour.
+- Price stayed exact (£79.67, clean numbering range so `_special_numbering:
+  no`) — confirms uploads are genuinely display-only and don't perturb the
+  Cart Transform pricing path.
+- First real proof of the whole uploads chain: browser file picker → Worker
+  `/upload` (validate, store in R2) → permanent `/file/:key` URL → wizard
+  state → `_display_fields_json` → exploded onto the paid order — not just
+  the Worker tested in isolation.
 
 ## Hard rules and known gotchas
 
