@@ -133,7 +133,10 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    against Economy Boxed Sets, charged exactly **£110.28**. Same zero-code-change
    proof as the earlier AJAX spike, now through the real UI: Step 8 is complete
    for both tiers.
-9. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
+9. Build the remaining Tier 2/3 configurator products (LBS, MES, BKS as
+   config, same pattern as Economy; assess LP separately — see "Product
+   catalogue classification" below). ⬜ **NOT STARTED.**
+10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
 
@@ -370,33 +373,58 @@ on the dev store, don't investigate early:
   proven" above) — this is just making sure the real production store,
   which doesn't exist yet, is created with the same setting.
 
-## Matrixify migration + redirect plan (Step 9)
+## Product catalogue classification
+
+Full current WooCommerce catalogue (24 products) classified — this is now
+settled and drives both Build Order step 9 and the Matrixify plan below.
+
+**Configurator products (Tier 2/3 — build as config, excluded from Matrixify
+product import):**
+- BS — Weekly ✅ built
+- EBS — Economy ✅ built
+- LBS — Large Weekly Boxed Sets — ⬜ not built. Boxed-set type, same shape
+  as Weekly — expected to be a config-only build like Economy was.
+- MES — Monthly Envelope Boxed Sets — ⬜ not built. Boxed-set type.
+- BKS — Booklet Envelope Sets — ⬜ not built. Boxed-set type.
+- LP — Customisable Gift Aid Envelopes — ⬜ not built, **different shape**
+  from the boxed-set products: envelope colour, a Gift Aid declaration print
+  option, church name/charity fields, image upload. Needs its own assessment
+  against the existing wizard config schema before assuming it's a drop-in
+  like LBS/MES/BKS — may need new step types, not just new metafield values.
+
+**Standard products (Tier 1 — migrate normally via Matrixify, no config
+build):** SBS, MHS, MASS, STOCKSP, LLP, LSC, PGA, ULP, SMP, STOCKMP,
+DL-ENV, C6-ENV, C5-ENV, C4-ENV, and the 4 CBM Treasurers Cash Books.
+
+**Order history decision:** old per-order configuration is stored as
+Gravity Forms entries (a bespoke plugin's own meta shape, not cleanly
+mappable to Shopify line item properties). Of ~4700 orders since 2019,
+import the **last 3 years as summary only** (customer/date/total/product) —
+detailed old configs stay in the WooCommerce/Gravity Forms archive rather
+than being re-mapped into `_display_fields_json` for closed historical
+orders.
+
+## Matrixify migration + redirect plan (Step 10)
 
 Staged plan, reviewed and approved — **not yet executed**. Needs WooCommerce
 exports from the site owner and a real production store to run against, so
-this can't start until both exist.
+this can't start until both exist. Classification (above) is done; this
+stage is otherwise unblocked on the data side once exports + a store exist.
 
-**Stage A — Inventory & classification.** Get the full current WooCommerce
-product catalogue and classify every product:
-- *Tier 1 (native)* — cash books, stock envelopes, anything without custom
-  options/uploads/banded pricing → migrates as a normal Shopify product via
-  Matrixify.
-- *Tier 2/3 (configurator)* — Weekly, Economy, and whatever else exists
-  beyond the two dev-store proof products → **excluded from the Matrixify
-  product import entirely.** These already exist here, hand-authored against
-  the metafield schema. Weekly's price table alone was hand-compressed from
-  280 WooCommerce rows into 40 bands — deliberate engineering, not something
-  to re-derive mechanically from an export. Re-importing these as products
-  risks clobbering already-proven config with mismatched data.
-This classification decides everything downstream — what Matrixify touches
-and what every redirect points to.
+**Stage A — Inventory & classification.** ✅ **DONE** — see "Product
+catalogue classification" above. This decides everything downstream — what
+Matrixify touches and what every redirect points to. Tier 2/3 products
+(BS, EBS, LBS, MES, BKS, LP) are excluded from the Matrixify product import
+entirely — these are hand-authored against the metafield schema (Weekly's
+price table alone was hand-compressed from 280 WooCommerce rows into 40
+bands — deliberate engineering, not something to re-derive mechanically from
+an export). Re-importing these as products risks clobbering already-proven
+config with mismatched data.
 
 **Stage B — Exports from WooCommerce.** Products CSV (full catalogue, not
 just Tier 1 — Tier 2/3 rows are still needed for redirect mapping even
-though excluded from import); customers export; orders export (summary-only
-is likely sufficient — the old configurator's per-order specifics lived in a
-bespoke Woo plugin's own meta shape, not worth re-mapping into
-`_display_fields_json` for closed historical orders); a full current URL
+though excluded from import); customers export; orders export (summary-only,
+last 3 years — see "Order history decision" above); a full current URL
 list (cheapest source: the XML sitemap, catches orphaned-but-indexed URLs a
 plugin export might miss).
 
@@ -413,10 +441,11 @@ Shopify equivalent.
 
 **Stage D — Build the redirect map.** One row per old URL: old path → new
 Shopify path. Tier 1 product URLs → the newly-imported product's handle.
-Tier 2/3 product URLs → the *already-built* wizard product's handle (these
-exist now, just need the old Woo URL(s) pointed at them). Category/shop
-pages → matching Shopify collection. Discontinued/orphaned products →
-nearest sensible target (parent collection or homepage), never a bare 404.
+Tier 2/3 product URLs → the wizard product's handle — requires BS, EBS, LBS,
+MES, BKS, and LP to all exist as built config-driven products first (Build
+Order step 9), not just Weekly/Economy. Category/shop pages → matching
+Shopify collection. Discontinued/orphaned products → nearest sensible target
+(parent collection or homepage), never a bare 404.
 
 **Stage E — Rehearsal, then cutover.** Dry-run the full import (products,
 customers, orders, redirects) against the real production store once it
@@ -427,10 +456,11 @@ products/customers landed correctly and a sample of redirects actually
 **Stage F — Post-launch monitoring.** Watch Shopify's 404 report / Search
 Console for a few weeks after go-live to catch anything the mapping missed.
 
-**Still needed from the site owner before this can start:** the full current
-product catalogue (to classify Tier 1 vs Tier 2/3 — only Weekly/Economy are
-known from the dev store so far), a decision on order-history import depth,
-and the sitemap URL or WooCommerce admin access for the full URL list.
+**Still needed from the site owner before this can start:** the actual
+WooCommerce exports themselves (products CSV, customers, orders, and the
+sitemap URL or admin access for the full URL list — see Stage B) and a real
+production store to import into. Catalogue classification and order-history
+depth are already decided — see "Product catalogue classification" above.
 
 ## Dev environment
 
