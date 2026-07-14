@@ -147,8 +147,12 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    Design & Verse" not yet reached) after it surfaced two real,
    launch-blocking bugs unrelated to LBS's own config — see "Wizard-UI pass
    findings — qty-dropdown hang and native-form pricing bypass" below. Both
-   are now fixed and need re-verifying before the LBS pass resumes; MES/BKS/LP
-   still need their own wizard-UI passes afterward.
+   fixes are now **confirmed working** (native form gone on both LBS and BS,
+   confirmed via screenshot of the live storefront; the LBS qty-60 AJAX
+   add-to-cart still prices exactly right with `blockOnFailure:true` —
+   `/cart.js` showed `line_price: 23697`, i.e. £236.97, matching the known-
+   good spike value exactly) — the LBS pass can resume at Step 3 next
+   session. MES/BKS/LP still need their own wizard-UI passes afterward.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -435,8 +439,9 @@ same as Weekly/Economy's own step 7/8 pass.
 Both found 2026-07-14 during LBS's wizard-UI pass (the first real browser
 load any of LBS/MES/BKS/LP had ever had — all four were previously proven
 only via AJAX spike, which never exercises the actual rendered page). Both
-are now fixed; the LBS pass is paused pending re-verification, not because
-of anything wrong with LBS's own config.
+are now fixed and **confirmed working** (see end of this section); the LBS
+pass is paused only to resume at Step 3 next session, not because of
+anything wrong with LBS's own config.
 
 **Bug 1 — qty dropdown hang, LBS/MES/BKS/LP.** LBS's product page hung
 indefinitely (blank tab, spinner never resolving) the moment the wizard
@@ -513,6 +518,21 @@ Fixed both halves:
    **live theme file, not a repo file** — there's nothing to commit for
    this half; the record of what changed is here. Re-pull `test-data` (not
    the dev theme) to inspect or repeat this.
+
+**Both fixes confirmed working, 2026-07-14** (same session, after the fixes
+landed):
+- Native form confirmed gone on **both LBS and BS** — verified via
+  screenshot of the live storefront for each, not just the template diff.
+  BS was the deliberate spot-check to confirm the shared-template fix
+  really did cover a second, unrelated product, not just the one being
+  tested.
+- The LBS qty-60 AJAX add-to-cart (the same case already proven in
+  "LBS spike — proven" — special numbering + 2 specials) still prices
+  **exactly right** with `blockOnFailure: true` live: `/cart.js` showed
+  `line_price: 23697`, i.e. £236.97, matching the known-good spike value
+  to the penny. Confirms `blockOnFailure: true` only changes behaviour on
+  a function *error* — a correctly-formed wizard order never triggers one,
+  so this is a pure safety backstop with no effect on the happy path.
 
 Two unrelated bugs found and fixed along the way, both worth remembering:
 - `write_metafields` (in `scripts/setup-dev-store.mjs`'s documented
