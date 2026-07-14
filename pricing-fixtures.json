@@ -12,5 +12,10 @@
   { "name": "Economy boundary qty 39 (top of 20-39 band)", "tier": "economy", "qty": 39, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 108.42 },
   { "name": "Economy boundary qty 40 (bottom of 40-99 band)", "tier": "economy", "qty": 40, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 73.20 },
   { "name": "Economy boundary qty 99 (top of 40-99 band)", "tier": "economy", "qty": 99, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 181.17 },
-  { "name": "Economy boundary qty 100 (bottom of 100-300 band)", "tier": "economy", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 175.00 }
+  { "name": "Economy boundary qty 100 (bottom of 100-300 band)", "tier": "economy", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 175.00 },
+
+  { "name": "LBS base qty 30 (bottom of first band, matches 2025 catalogue break)", "tier": "lbs", "qty": 30, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 157.21 },
+  { "name": "LBS mid-band qty 33 (below the 35 break, uses the 30 break's rate)", "tier": "lbs", "qty": 33, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 172.93 },
+  { "name": "LBS open-ended last band qty 350", "tier": "lbs", "qty": 350, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 1035.53 },
+  { "name": "LBS qty 60 + special numbering + 2 specials", "tier": "lbs", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 236.97 }
 ]

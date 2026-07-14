@@ -135,7 +135,8 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    for both tiers.
 9. Build the remaining Tier 2/3 configurator products (LBS, MES, BKS as
    config, same pattern as Economy; assess LP separately — see "Product
-   catalogue classification" below). ⬜ **NOT STARTED.**
+   catalogue classification" below). 🔶 **IN PROGRESS** — LBS done (see "LBS
+   spike — proven" below); MES and BKS not started.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -237,6 +238,50 @@ order (#1003) placed against Weekly Boxed Sets with both upload points used:
   `/upload` (validate, store in R2) → permanent `/file/:key` URL → wizard
   state → `_display_fields_json` → exploded onto the paid order — not just
   the Worker tested in isolation.
+
+### LBS spike — proven
+
+Confirmed live on the dev store, same AJAX-only method as the Weekly/Economy
+spikes (`/cart/add.js` + real checkout, no wizard UI) — new "Large Weekly
+Boxed Sets" product seeded via `scripts/setup-dev-store.mjs` (now a third
+entry in `PRODUCTS`) with its own `custom.price_table`/`custom.addon_fees`/
+`custom.config`, built from the site owner's 2025 catalogue price-break list
+(30 breaks, 30→350+ sets):
+
+- Qty 60 + special numbering + 2 specials (Christmas, Easter) charges
+  **exactly £236.97** at checkout — `round2(3.6495×60)=218.97 + 12.00 +
+  0.05×2×60=6.00` — recomputed server-side by the same deployed
+  `pricing-function` Cart Transform, **zero code changes**, third product
+  proven generic.
+- Price table was derived differently from Weekly/Economy's WooCommerce row
+  exports: the site owner gave 30 discrete price *breaks* (quantity → total),
+  not per-row units. Each band's `unit` rate is `break_total ÷ break_qty`
+  (11 decimal places — enough for every breakpoint to round-trip to the exact
+  penny, verified by script before writing the file), with `to` running up to
+  one below the next break's quantity. The last band (350+) is open-ended
+  (`to: 999999`) — confirmed with the site owner there's no further real
+  breakpoint above 350, so any larger order still prices at that rate rather
+  than throwing `"No price band covers quantity"`.
+- `min_quantity: 30` (vs Weekly's 20) and box/envelope colours (Blue/Yellow;
+  Blue/Yellow/White) differ from Weekly, but `holydays.max: 60`,
+  `printed_extra` (£0.01), and `holyday_special` (£0.05) were confirmed by
+  the site owner to intentionally match Weekly exactly — Large Weekly is the
+  same product family (weekly cadence, same fee structure), just larger
+  envelopes and its own price table.
+- 4 new shared fixtures added to `pricing-fixtures.json` (exact breakpoint,
+  mid-band interpolation, the open-ended last band, and an addons case) and
+  wired into both `extensions/pricing-function/tests/pricing.test.ts` and
+  `wizard-pricing-tests/tests/pricing.test.js` — all pass, confirming the
+  Function's and the wizard's pricing implementations agree on LBS exactly
+  the same way they already agreed on Weekly/Economy.
+- The product had to be switched from the setup script's default `DRAFT`
+  status to **Active** with the **Online Store** sales channel enabled by
+  hand in Shopify admin before `/cart/add.js` would accept it — the setup
+  script only creates/updates the product and metafields, it never publishes.
+
+Remaining for LBS: full wizard-UI end-to-end (build order step 7/8 style,
+real paid test order) — not yet done, only the AJAX spike is proven so far.
+MES and BKS still need their own price/config data and the same spike.
 
 ## Hard rules and known gotchas
 
@@ -382,8 +427,9 @@ settled and drives both Build Order step 9 and the Matrixify plan below.
 product import):**
 - BS — Weekly ✅ built
 - EBS — Economy ✅ built
-- LBS — Large Weekly Boxed Sets — ⬜ not built. Boxed-set type, same shape
-  as Weekly — expected to be a config-only build like Economy was.
+- LBS — Large Weekly Boxed Sets — ✅ AJAX spike proven (see "LBS spike —
+  proven" above); full wizard-UI end-to-end still pending. Confirmed a
+  config-only build, same shape as Weekly, no new code.
 - MES — Monthly Envelope Boxed Sets — ⬜ not built. Boxed-set type.
 - BKS — Booklet Envelope Sets — ⬜ not built. Boxed-set type.
 - LP — Customisable Gift Aid Envelopes — ⬜ not built, **different shape**

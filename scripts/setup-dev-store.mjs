@@ -248,9 +248,54 @@ const CONFIG_ECONOMY = {
   },
 };
 
+// Tier 2 — Large Weekly Boxed Sets (LBS). Same full shape as Weekly (uploads on,
+// custom verse/design allowed), different colours, min_quantity, and price
+// table/fees — sourced from the 2025 catalogue's price-break list and
+// compressed the same way Weekly's 280-row table was: each band's `unit` is
+// the price-break total ÷ its quantity, `to` runs up to one below the next
+// break. See CLAUDE.md "Large Weekly (LBS) spike" for the verification.
+const PRICE_TABLE_LBS = JSON.parse(
+  readFileSync(resolve(ROOT, "price-table-lbs.json"), "utf8")
+);
+
+const ADDON_FEES_LBS = JSON.parse(
+  readFileSync(resolve(ROOT, "addon-fees-lbs.json"), "utf8")
+);
+
+const CONFIG_LBS = {
+  min_quantity: 30,
+  uploads_enabled: true,
+  steps: {
+    options: {
+      enabled: true,
+      box_colour:      { values: ["Blue", "Yellow"], locked: false },
+      envelope_colour: { values: ["Blue", "Yellow", "White"], locked: false },
+      text_colour:     { values: ["Black"], locked: true },
+    },
+    headings: {
+      enabled: true,
+      lines: ["Church/Charity Name", "Church District", "Church Diocese", "Registered Charity No."],
+    },
+    design: {
+      enabled: true,
+      verse:  { enabled: true, allow_custom: true },
+      design: { enabled: true, allow_upload: true },
+    },
+    numbering: {
+      enabled: true,
+      special_numbering_fee_key: "special_numbering",
+      specials: ["Christmas", "Easter", "Easter (2)", "Harvest", "Gift Day", "Initial Offering"],
+    },
+    holydays:   { enabled: true, max: 60 },
+    start_date: { enabled: true, weekday_only: "Sunday" },
+    notes:      { enabled: true },
+  },
+};
+
 const PRODUCTS = [
-  { title: "Weekly Boxed Sets",  priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Economy Boxed Sets", priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Weekly Boxed Sets",       priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Economy Boxed Sets",      priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Large Weekly Boxed Sets", priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
 ];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────

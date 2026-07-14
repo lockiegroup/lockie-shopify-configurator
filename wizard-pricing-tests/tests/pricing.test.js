@@ -6,8 +6,10 @@ import path from "path";
 import fixtures from "../../pricing-fixtures.json";
 import weeklyPriceTable from "../../price-table-weekly.json";
 import economyPriceTable from "../../price-table-economy.json";
+import lbsPriceTable from "../../price-table-lbs.json";
 import weeklyAddonFees from "../../addon-fees-weekly.json";
 import economyAddonFees from "../../addon-fees-economy.json";
+import lbsAddonFees from "../../addon-fees-lbs.json";
 
 // pricing.js is a plain UMD script, loaded via <script> in the theme with no
 // bundler — it must stay a plain CommonJS-style .js file for that to work.
@@ -38,6 +40,7 @@ const { computeLineTotal, countExcluded, numberingMatch, hasSpecialNumbering } =
 const TABLES_BY_TIER = {
   weekly: { priceTable: weeklyPriceTable, addonFees: weeklyAddonFees },
   economy: { priceTable: economyPriceTable, addonFees: economyAddonFees },
+  lbs: { priceTable: lbsPriceTable, addonFees: lbsAddonFees },
 };
 
 // Same fixture file the Function's pricing.ts test runs

@@ -3,18 +3,23 @@ import { computeLineTotal } from "../src/pricing";
 import type { PriceTable, AddonFees } from "../src/pricing";
 import weeklyPriceTableJson from "../../../price-table-weekly.json";
 import economyPriceTableJson from "../../../price-table-economy.json";
+import lbsPriceTableJson from "../../../price-table-lbs.json";
 import weeklyAddonFeesJson from "../../../addon-fees-weekly.json";
 import economyAddonFeesJson from "../../../addon-fees-economy.json";
+import lbsAddonFeesJson from "../../../addon-fees-lbs.json";
 import fixtures from "../../../pricing-fixtures.json";
 
 const WEEKLY_PRICE_TABLE = weeklyPriceTableJson as PriceTable;
 const ECONOMY_PRICE_TABLE = economyPriceTableJson as PriceTable;
+const LBS_PRICE_TABLE = lbsPriceTableJson as PriceTable;
 const WEEKLY_ADDON_FEES = weeklyAddonFeesJson as AddonFees;
 const ECONOMY_ADDON_FEES = economyAddonFeesJson as AddonFees;
+const LBS_ADDON_FEES = lbsAddonFeesJson as AddonFees;
 
 const TABLES_BY_TIER: Record<string, { priceTable: PriceTable; addonFees: AddonFees }> = {
   weekly: { priceTable: WEEKLY_PRICE_TABLE, addonFees: WEEKLY_ADDON_FEES },
   economy: { priceTable: ECONOMY_PRICE_TABLE, addonFees: ECONOMY_ADDON_FEES },
+  lbs: { priceTable: LBS_PRICE_TABLE, addonFees: LBS_ADDON_FEES },
 };
 
 // These fixtures are the single source of truth for expected totals, shared
