@@ -1,0 +1,10 @@
+{
+  "currency": "GBP",
+  "rounding": "line_total_2dp",
+  "bands": [
+    { "from": 25,  "to": 49,     "unit": 1.876 },
+    { "from": 50,  "to": 74,     "unit": 1.6274 },
+    { "from": 75,  "to": 99,     "unit": 1.54466666667 },
+    { "from": 100, "to": 999999, "unit": 1.5033 }
+  ]
+}

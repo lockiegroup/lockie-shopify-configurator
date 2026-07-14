@@ -292,10 +292,55 @@ const CONFIG_LBS = {
   },
 };
 
+// Tier 2 — Monthly Envelope Boxed Sets (MES). Same full shape as Weekly
+// (uploads on, custom verse/design allowed, holydays.max 60, and all addon
+// fees confirmed by the site owner to match Weekly exactly — Monthly's own
+// catalogue confirms the same £12 special-numbering charge). Only the price
+// table (4 breaks, simple), colours, and min_quantity differ. See CLAUDE.md
+// "MES spike — proven" for the verification.
+const PRICE_TABLE_MES = JSON.parse(
+  readFileSync(resolve(ROOT, "price-table-mes.json"), "utf8")
+);
+
+const ADDON_FEES_MES = JSON.parse(
+  readFileSync(resolve(ROOT, "addon-fees-mes.json"), "utf8")
+);
+
+const CONFIG_MES = {
+  min_quantity: 25,
+  uploads_enabled: true,
+  steps: {
+    options: {
+      enabled: true,
+      box_colour:      { values: ["Blue", "Green"], locked: false },
+      envelope_colour: { values: ["Blue", "Yellow", "Green", "Manilla", "White"], locked: false },
+      text_colour:     { values: ["Black"], locked: true },
+    },
+    headings: {
+      enabled: true,
+      lines: ["Church/Charity Name", "Church District", "Church Diocese", "Registered Charity No."],
+    },
+    design: {
+      enabled: true,
+      verse:  { enabled: true, allow_custom: true },
+      design: { enabled: true, allow_upload: true },
+    },
+    numbering: {
+      enabled: true,
+      special_numbering_fee_key: "special_numbering",
+      specials: ["Christmas", "Easter", "Easter (2)", "Harvest", "Gift Day", "Initial Offering"],
+    },
+    holydays:   { enabled: true, max: 60 },
+    start_date: { enabled: true, weekday_only: "Sunday" },
+    notes:      { enabled: true },
+  },
+};
+
 const PRODUCTS = [
-  { title: "Weekly Boxed Sets",       priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Economy Boxed Sets",      priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Large Weekly Boxed Sets", priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Weekly Boxed Sets",         priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Economy Boxed Sets",        priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Large Weekly Boxed Sets",   priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Monthly Envelope Boxed Sets", priceTable: PRICE_TABLE_MES,   addonFees: ADDON_FEES_MES,     config: CONFIG_MES,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
 ];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────

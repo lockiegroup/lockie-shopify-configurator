@@ -135,8 +135,8 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    for both tiers.
 9. Build the remaining Tier 2/3 configurator products (LBS, MES, BKS as
    config, same pattern as Economy; assess LP separately — see "Product
-   catalogue classification" below). 🔶 **IN PROGRESS** — LBS done (see "LBS
-   spike — proven" below); MES and BKS not started.
+   catalogue classification" below). 🔶 **IN PROGRESS** — LBS and MES done
+   (see "LBS spike — proven" / "MES spike — proven" below); BKS not started.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -282,6 +282,36 @@ entry in `PRODUCTS`) with its own `custom.price_table`/`custom.addon_fees`/
 Remaining for LBS: full wizard-UI end-to-end (build order step 7/8 style,
 real paid test order) — not yet done, only the AJAX spike is proven so far.
 MES and BKS still need their own price/config data and the same spike.
+
+### MES spike — proven
+
+Confirmed live on the dev store, same AJAX-only method as LBS — new "Monthly
+Envelope Boxed Sets" product seeded via `scripts/setup-dev-store.mjs` (now a
+fourth entry in `PRODUCTS`) with its own `custom.price_table`/
+`custom.config`, built from the site owner's 2025 catalogue price-break list
+(only 4 breaks — a much simpler table than Weekly/LBS):
+
+- Qty 60 + special numbering + 2 specials (Christmas, Easter) charges
+  **exactly £115.64** at checkout — `round2(1.6274×60)=97.64 + 12.00 +
+  0.05×2×60=6.00` — same deployed `pricing-function` Cart Transform, zero
+  code changes, fourth product proven generic.
+- Same break→rate derivation as LBS (`unit = break_total ÷ break_qty`, 11dp,
+  each of the 4 breakpoints round-trips to the exact penny), open-ended last
+  band above the 100-set break (`to: 999999`).
+- `min_quantity: 25`, box colour Blue/Green, envelope colour Blue/Yellow/
+  Green/Manilla/White — all differ from Weekly/LBS. `addon_fees` and
+  `holydays.max: 60` were confirmed by the site owner to match Weekly
+  exactly (Monthly's own catalogue independently states the same £12
+  special-numbering charge) — same "same product family, different price
+  table" reasoning as LBS.
+- 4 new shared fixtures added to `pricing-fixtures.json`, wired into both
+  test suites — all pass (22 Function tests, 29 wizard tests total across
+  all four tiers).
+- Same manual-publish step as LBS: setup script leaves the product `DRAFT`,
+  had to be set Active + Online Store by hand before `/cart/add.js` worked.
+
+Remaining for MES: full wizard-UI end-to-end, same as LBS. BKS is next —
+same pattern, awaiting its own price/config data from the site owner.
 
 ## Hard rules and known gotchas
 
@@ -430,7 +460,8 @@ product import):**
 - LBS — Large Weekly Boxed Sets — ✅ AJAX spike proven (see "LBS spike —
   proven" above); full wizard-UI end-to-end still pending. Confirmed a
   config-only build, same shape as Weekly, no new code.
-- MES — Monthly Envelope Boxed Sets — ⬜ not built. Boxed-set type.
+- MES — Monthly Envelope Boxed Sets — ✅ AJAX spike proven (see "MES spike —
+  proven" above); full wizard-UI end-to-end still pending.
 - BKS — Booklet Envelope Sets — ⬜ not built. Boxed-set type.
 - LP — Customisable Gift Aid Envelopes — ⬜ not built, **different shape**
   from the boxed-set products: envelope colour, a Gift Aid declaration print

@@ -17,5 +17,10 @@
   { "name": "LBS base qty 30 (bottom of first band, matches 2025 catalogue break)", "tier": "lbs", "qty": 30, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 157.21 },
   { "name": "LBS mid-band qty 33 (below the 35 break, uses the 30 break's rate)", "tier": "lbs", "qty": 33, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 172.93 },
   { "name": "LBS open-ended last band qty 350", "tier": "lbs", "qty": 350, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 1035.53 },
-  { "name": "LBS qty 60 + special numbering + 2 specials", "tier": "lbs", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 236.97 }
+  { "name": "LBS qty 60 + special numbering + 2 specials", "tier": "lbs", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 236.97 },
+
+  { "name": "MES base qty 25 (bottom of first band, matches 2025 catalogue break)", "tier": "mes", "qty": 25, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 46.90 },
+  { "name": "MES mid-band qty 60 (below the 75 break, uses the 50 break's rate)", "tier": "mes", "qty": 60, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 97.64 },
+  { "name": "MES open-ended last band qty 100", "tier": "mes", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 150.33 },
+  { "name": "MES qty 60 + special numbering + 2 specials", "tier": "mes", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 115.64 }
 ]
