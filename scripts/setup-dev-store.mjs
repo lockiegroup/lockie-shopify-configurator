@@ -16,9 +16,16 @@
  *
  * 2. shopify store auth \
  *        --store <your-dev-store.myshopify.com> \
- *        --scopes write_products,write_metafields,write_cart_transforms
+ *        --scopes write_products,write_cart_transforms
  *      Stores an online access token for this store in the CLI session.
  *      Re-run if you open a new terminal or the token expires.
+ *      NOTE: write_metafields is not a real Admin API scope — product-owned
+ *      metafields (custom.config etc., all this script writes) are covered
+ *      by write_products alone. An earlier version of this comment listed
+ *      write_metafields; Shopify's OAuth authorize endpoint rejects it
+ *      outright ("invalid_scope") when combined with other new scopes in
+ *      the same request — found while adding read_themes/write_themes for
+ *      the theme-template fix, 2026-07-14.
  *
  * Usage
  * ─────
@@ -73,7 +80,7 @@ if (!STORE) {
     "Or set SHOPIFY_FLAG_STORE in .env\n\n" +
     "Prerequisites:\n" +
     "  1. shopify app dev\n" +
-    "  2. shopify store auth --store <domain> --scopes write_products,write_metafields\n"
+    "  2. shopify store auth --store <domain> --scopes write_products,write_cart_transforms\n"
   );
   process.exit(1);
 }

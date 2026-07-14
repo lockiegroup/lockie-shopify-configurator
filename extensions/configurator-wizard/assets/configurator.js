@@ -95,11 +95,23 @@
     }
   }
 
-  function maxQtyFromPriceTable(priceTable, fallback) {
-    if (!priceTable || !Array.isArray(priceTable.bands) || priceTable.bands.length === 0) {
-      return fallback;
-    }
-    return priceTable.bands[priceTable.bands.length - 1].to;
+  // Hard ceiling on how many <option>s the qty dropdown ever renders. A price
+  // table's last band `to` can be an open-ended pricing sentinel (999999 —
+  // "no further real breakpoint, keep pricing at this band's rate", see
+  // findUnitPrice in pricing.js) rather than a real quantity anyone would
+  // pick from a dropdown. maxQtyFromPriceTable is the *only* caller of this
+  // value anywhere in the file — pricing itself scans priceTable.bands
+  // directly and never goes through this function — so capping it here is
+  // purely a rendering fix, it cannot affect what a line actually gets
+  // charged.
+  var QTY_DROPDOWN_MAX_OPTIONS = 1000;
+
+  function maxQtyFromPriceTable(priceTable, minQty, fallback) {
+    var lastBandTo =
+      priceTable && Array.isArray(priceTable.bands) && priceTable.bands.length
+        ? priceTable.bands[priceTable.bands.length - 1].to
+        : fallback;
+    return Math.min(lastBandTo, minQty + QTY_DROPDOWN_MAX_OPTIONS - 1);
   }
 
   // numberingMatch/hasSpecialNumbering now live in pricing.js (fixture/unit-
@@ -443,7 +455,7 @@
     var config = ctx.config;
     var state = ctx.state;
     var minQty = config.min_quantity || 1;
-    var maxQty = maxQtyFromPriceTable(ctx.priceTable, minQty + 280);
+    var maxQty = maxQtyFromPriceTable(ctx.priceTable, minQty, minQty + 280);
 
     var qtyOpts = "";
     for (var q = minQty; q <= maxQty; q++) {

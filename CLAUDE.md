@@ -141,8 +141,14 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    "LP spike — proven" below. LP needed real (small, contained) code changes,
    not just config — see its section for exactly what and why. Full
    wizard-UI end-to-end (not just the AJAX spike) is still outstanding for
-   LBS/MES/BKS/LP, same as Weekly/Economy's own step 7/8 pass — this is the
-   only work left before Matrixify (step 10) can start in earnest.
+   LBS/MES/BKS/LP, same as Weekly/Economy's own step 7/8 pass.
+   🔶 **IN PROGRESS** — LBS's wizard-UI pass started 2026-07-14 and is
+   **paused mid-flow** (Step 1 and Step 2 confirmed working, Step 3 "Image
+   Design & Verse" not yet reached) after it surfaced two real,
+   launch-blocking bugs unrelated to LBS's own config — see "Wizard-UI pass
+   findings — qty-dropdown hang and native-form pricing bypass" below. Both
+   are now fixed and need re-verifying before the LBS pass resumes; MES/BKS/LP
+   still need their own wizard-UI passes afterward.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -422,8 +428,105 @@ Confirmed live on the dev store, same AJAX-only method as LBS/MES/BKS — new
 **All six configurator products (BS, EBS, LBS, MES, BKS, LP) are now
 built and proven** — Build Order step 9 is complete. Full wizard-UI
 end-to-end (not just the AJAX spike) remains outstanding for LBS/MES/BKS/LP,
-same as Weekly/Economy's own step 7/8 pass — the only work left before the
-Matrixify migration (step 10) can start in earnest.
+same as Weekly/Economy's own step 7/8 pass.
+
+### Wizard-UI pass findings — qty-dropdown hang and native-form pricing bypass
+
+Both found 2026-07-14 during LBS's wizard-UI pass (the first real browser
+load any of LBS/MES/BKS/LP had ever had — all four were previously proven
+only via AJAX spike, which never exercises the actual rendered page). Both
+are now fixed; the LBS pass is paused pending re-verification, not because
+of anything wrong with LBS's own config.
+
+**Bug 1 — qty dropdown hang, LBS/MES/BKS/LP.** LBS's product page hung
+indefinitely (blank tab, spinner never resolving) the moment the wizard
+tried to render. Root cause: `renderOptions`'s Quantity `<select>` builds
+one `<option>` per integer from `min_quantity` to
+`maxQtyFromPriceTable(priceTable, fallback)`, and that helper just returned
+the price table's *last band's `to`* — which for LBS/MES/BKS/LP is the
+open-ended pricing sentinel `999999` (deliberately introduced with LBS,
+see "LBS spike — proven", meaning "no further real breakpoint, keep
+pricing at this band's rate" to `findUnitPrice`). Reused as a dropdown
+bound, that's `for (q = 30; q <= 999999; q++)` — roughly 970,000
+concatenated `<option>` tags. Weekly/Economy never hit this because their
+price tables are genuinely bounded (899 and 300 respectively), predating
+the open-ended-band convention. **Fix**: `maxQtyFromPriceTable` now takes
+`(priceTable, minQty, fallback)` and returns
+`Math.min(lastBandTo, minQty + QTY_DROPDOWN_MAX_OPTIONS - 1)` with
+`QTY_DROPDOWN_MAX_OPTIONS = 1000` — caps the *rendered dropdown* without
+touching pricing at all (`findUnitPrice` never calls this function; it
+scans `priceTable.bands` directly and is untouched). Confirmed a no-op for
+Weekly/Economy (899 and 300 are both well under the 1000-option cap) and
+verified Weekly/Economy still load fine after the fix. **Known residual
+gap, not fixed**: LP's real catalogue goes to 10000+ envelopes, but the
+dropdown now caps at `minQty + 999` (≈1099) — a customer wanting, say, 5000
+envelopes can't select that from the dropdown. Flagged as a separate
+follow-up (raise LP's cap specifically, or switch large-range products to a
+number input) — deliberately not bundled into this fix.
+
+**Bug 2 — native form pricing bypass, all six products.** Below the
+wizard, LBS's product page also showed a second, fully native "Add to
+cart"/"Buy it now" pair at "£0.01" — Dawn's own `main-product` section
+blocks (`variant_picker`, `quantity_selector`, `price`, `buy_buttons`),
+still present and unhidden alongside the configurator app block, which was
+added as *one more block in that same section* rather than replacing it.
+Every configurator variant carries a real, purchasable placeholder price of
+`£0.01` (Cart Transform is meant to always override it), and
+`cartTransformRun` has no guard against a cart line with no wizard
+properties at all — it falls back to the native cart quantity
+(`line.quantity`), and for the native form's default quantity of 1 (below
+every product's `min_quantity`), `findUnitPrice` throws
+`"No price band covers quantity 1"`. Confirmed directly (not inferred) via
+`shopify app execute` — the app's own authenticated session, since
+`cartTransforms` is invisible to the store-level token used by
+`shopify store execute` — that the live CartTransform had
+**`blockOnFailure: false`** (the Admin API default when omitted from
+`cartTransformCreate`), meaning that thrown error let checkout proceed with
+the cart line's **original, unmodified £0.01 price**. Confirmed via
+`templateSuffix` that all six products share one default `product.json`
+template (all `null`), so this was never LBS-specific or masked by a
+template difference for BS/EBS — it simply was never noticed, because the
+three earlier proven orders (#1001/#1002/#1003) always used the wizard's
+own "Add to basket" button.
+
+Fixed both halves:
+1. **`blockOnFailure: true`.** No `cartTransformUpdate` mutation exists
+   (confirmed via schema introspection — only `cartTransformCreate`/
+   `cartTransformDelete`), so this meant delete + recreate. New live
+   CartTransform GID `gid://shopify/CartTransform/128778484` (see Hard
+   rules below) — confirmed `blockOnFailure: true` via an independent
+   re-query, not just the mutation's own echo. This is the actual security
+   backstop: it closes the bypass even for a request that skips the theme
+   entirely (a raw `/cart/add.js` POST, same technique this project's own
+   AJAX spikes use deliberately) by failing checkout outright instead of
+   silently charging the wrong price.
+2. **Removed the native buy-box blocks from the live theme's shared
+   product template**, not a visibility toggle. Pulled `test-data` (the
+   store's actual **live** theme, `id 162913943796` — distinct from the
+   "App Ext. Host" development theme `shopify app dev` manages, which
+   isn't what the plain storefront URLs resolve to), deleted
+   `variant_picker`, `quantity_selector`, `price`, and `buy_buttons` from
+   both `blocks` and `block_order` in `templates/product.json` (kept
+   `title`/`vendor`/`description`/`share` — pure content, not buy-box), and
+   pushed via `shopify theme push --allow-live`. Applies to all six
+   products in one edit since they share the one template. This is a
+   **live theme file, not a repo file** — there's nothing to commit for
+   this half; the record of what changed is here. Re-pull `test-data` (not
+   the dev theme) to inspect or repeat this.
+
+Two unrelated bugs found and fixed along the way, both worth remembering:
+- `write_metafields` (in `scripts/setup-dev-store.mjs`'s documented
+  prerequisite `shopify store auth --scopes ...` command) is not a real
+  Admin API scope — Shopify's OAuth authorize endpoint rejects it outright
+  ("invalid_scope") when combined with other new scopes in the same
+  request. Product-owned metafield writes (everything this project does)
+  are covered by `write_products` alone; `write_metafields` was silently
+  tolerated in earlier scope grants until a stricter validation path hit
+  it. Fixed the doc comment (both occurrences) to drop it.
+- `shopify theme pull`/`push` need `read_themes`/`write_themes` — not
+  previously granted to the `store auth` session used throughout this
+  project (only `write_products`/`write_cart_transforms`). Re-authenticated
+  with `shopify store auth --scopes write_products,write_cart_transforms,read_themes,write_themes`.
 
 ## Hard rules and known gotchas
 
@@ -478,18 +581,52 @@ Matrixify migration (step 10) can start in earnest.
 - **CartTransform activation is manual, not code.** An `afterAuth`/loader-based
   auto-registration (`cartTransformCreate` on app install) was attempted and
   abandoned — it never worked (Cloudflare tunnel errors during the auth flow).
-  The live CartTransform (`gid://shopify/CartTransform/127893748` on the dev
-  store) was activated by hand via GraphiQL running the `cartTransformCreate`
-  mutation directly. **This must be redone manually** (same mutation, via
-  GraphiQL or the Admin API) any time the app is reinstalled or moved to a new
-  store — there is no code that does this automatically, and none should be
-  built without solving the tunnel issue first.
+  The live CartTransform (`gid://shopify/CartTransform/128778484` on the dev
+  store) was activated by hand via `shopify app execute` running the
+  `cartTransformCreate` mutation directly. **This must be redone manually**
+  (same mutation, via `shopify app execute` or the Admin API) any time the app
+  is reinstalled or moved to a new store — there is no code that does this
+  automatically, and none should be built without solving the tunnel issue
+  first.
+- **`blockOnFailure: true` is required — always set it explicitly.** There is
+  no `cartTransformUpdate` mutation (confirmed via schema introspection —
+  `Mutation` only has `cartTransformCreate`/`cartTransformDelete`), so changing
+  it later means delete-then-recreate, which gets a **new CartTransform GID**
+  (this is the second GID this project has had — the original,
+  `gid://shopify/CartTransform/127893748`, was created with the default
+  `blockOnFailure: false` and replaced 2026-07-14 — see "Wizard-UI pass
+  findings — qty-dropdown hang and native-form pricing bypass" above).
+  `blockOnFailure` defaults to `false` if
+  omitted, meaning a `cartTransformRun` error (e.g. `computeLineTotal` throwing
+  on an out-of-band quantity) lets checkout proceed with the cart line's
+  **original, unmodified price** — silently defeating "never trust the client
+  price" the moment the Function errors for any reason. `read`-only visibility
+  into `cartTransforms` requires the app's own authenticated session
+  (`shopify app execute`) — the store-level token used by `shopify store
+  execute` always returns `nodes: []` for this field, since Shopify Functions
+  are scoped to the querying API client, not the store. Don't mistake that
+  empty result for "no CartTransform is registered."
 - **Two Partner app configs exist; `lockie-configurator-v2` is the live one.**
   `shopify.app.toml` (client_id `6919f99c...`) is an earlier/unused config.
   `shopify.app.lockie-configurator-v2.toml` (client_id `d0d9273512c...`) is
   what the CLI is actually linked to (`.shopify/project.json`) and what
   `deploy`/`dev` run against — use `--config lockie-configurator-v2` when the
   CLI doesn't pick it up by default.
+- **`renderOptions`'s qty dropdown is capped at `minQty + 999` options
+  (`QTY_DROPDOWN_MAX_OPTIONS = 1000`), independent of the price table's last
+  band.** A price table's open-ended sentinel (`to: 999999` — LBS/MES/BKS/LP
+  all use it) is only safe for `findUnitPrice`'s band scan, never for sizing
+  a literal `<select>`. See "Wizard-UI pass findings" above before ever
+  reusing `maxQtyFromPriceTable`'s return value for anything other than the
+  dropdown.
+- **Four themes exist on the dev store; `test-data` (id `162913943796`,
+  role `live`) is the one plain storefront URLs actually resolve to** — not
+  the "App Ext. Host" development theme `shopify app dev` manages (that one
+  is per-developer/ephemeral, for live-reloading extension assets, and isn't
+  what a customer or a manual test hits). `shopify theme pull`/`push`
+  default to prompting for a theme unless `--theme <id>` is given — always
+  pass it explicitly and confirm you're editing `test-data`, not the dev
+  theme, when changing template files by hand.
 
 ## Pricing formula (identical in front end and Function)
 
