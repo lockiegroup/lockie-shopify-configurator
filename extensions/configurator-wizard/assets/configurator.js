@@ -322,11 +322,24 @@
       });
     }
 
+    if (steps.gift_aid && steps.gift_aid.enabled) {
+      defs.push({
+        key: "gift_aid",
+        title: "Gift Aid Declaration",
+        hint: "Let us know whether to print the Gift Aid declaration on your envelopes.",
+        render: renderGiftAid,
+        validate: function (ctx) {
+          if (!ctx.state.gift_aid) return "Please choose whether to print the Gift Aid declaration.";
+          return "";
+        },
+      });
+    }
+
     if (steps.design && steps.design.enabled) {
       defs.push({
         key: "design",
-        title: "Image Design & Verse",
-        hint: "Choose a verse and a design, or supply your own.",
+        title: steps.design.title || "Image Design & Verse",
+        hint: steps.design.hint || "Choose a verse and a design, or supply your own.",
         render: renderDesign,
         validate: function (ctx) {
           var s = ctx.state;
@@ -502,6 +515,48 @@
           .forEach(function (x) {
             x.setAttribute("aria-pressed", x.dataset.val === state[group]);
           });
+      });
+    });
+  }
+
+  // Gift Aid Declaration step (LP) — a single required Yes/No field, reusing
+  // the same swatch idiom as the colour fields in renderOptions rather than
+  // introducing a new field widget. Its own step (not folded into "Quantity
+  // & Options") to match the live LP product's 4-step flow.
+  function renderGiftAid(el, ctx) {
+    var config = ctx.config;
+    var state = ctx.state;
+    var values =
+      config.steps.gift_aid.values && config.steps.gift_aid.values.length
+        ? config.steps.gift_aid.values
+        : ["Yes", "No"];
+
+    el.innerHTML =
+      '<div class="lockie-configurator__field">' +
+      '<label class="lockie-configurator__label">Print Gift Aid declaration? <span class="lockie-configurator__req">*</span></label>' +
+      '<div class="lockie-configurator__swatches" data-group="gift_aid">' +
+      values
+        .map(function (v) {
+          return (
+            '<span class="lockie-configurator__swatch" role="button" data-val="' +
+            escapeHtml(v) +
+            '" aria-pressed="' +
+            (state.gift_aid === v) +
+            '">' +
+            escapeHtml(v) +
+            "</span>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      "</div>";
+
+    el.querySelectorAll(".lockie-configurator__swatch").forEach(function (s) {
+      s.addEventListener("click", function () {
+        state.gift_aid = s.dataset.val;
+        el.querySelectorAll(".lockie-configurator__swatch").forEach(function (x) {
+          x.setAttribute("aria-pressed", x.dataset.val === state.gift_aid);
+        });
       });
     });
   }
@@ -1047,6 +1102,7 @@
       box_colour: null,
       envelope_colour: null,
       text_colour: null,
+      gift_aid: null,
       headings: {},
       headings_mode: "new",
       verse_mode: "none",
@@ -1223,17 +1279,34 @@
         });
       }
 
-      push("Verse", VERSE_MODE_LABELS[state.verse_mode] || state.verse_mode);
+      push("Print Gift Aid Declaration?", state.gift_aid);
+
+      // Same class of bug as the Excluded Numbers/Holyday specials gating
+      // below: "No verse" is a meaningful non-empty string, so it survives
+      // the push() empty-skip even when the verse field was never shown at
+      // all (verse.enabled:false — LP) rather than simply left unanswered.
+      if (config.steps.design.verse && config.steps.design.verse.enabled) {
+        push("Verse", VERSE_MODE_LABELS[state.verse_mode] || state.verse_mode);
+      }
       push("Selected Verse", resolveSelectedVerse());
       push("Design", DESIGN_MODE_LABELS[state.design_mode] || state.design_mode);
       push("Selected Design", resolveSelectedDesign());
 
       push("Numbered from", state.num_from);
       push("Numbered to", state.num_to);
-      fields.push(["Excluded Numbers", state.excluded || "None"]);
+      // Unlike every other row here, "None" is a meaningful value, not an
+      // empty one, so these two bypass the push() empty-skip helper — gate
+      // them on the step actually being enabled instead, so a product that
+      // never renders numbering/holydays (e.g. LP) doesn't get a false
+      // "None" row for a step that doesn't exist on it.
+      if (config.steps.numbering && config.steps.numbering.enabled) {
+        fields.push(["Excluded Numbers", state.excluded || "None"]);
+      }
       push("Full Number Range", formatNumberRange(state.num_from, state.num_to, state.excluded));
 
-      fields.push(["Holyday specials", state.holydays > 0 ? String(state.holydays) : "None"]);
+      if (config.steps.holydays && config.steps.holydays.enabled) {
+        fields.push(["Holyday specials", state.holydays > 0 ? String(state.holydays) : "None"]);
+      }
       push("Holyday Template", state.holyday_upload_status === "done" ? state.holyday_upload_url : "");
       push("Specials", state.specials.join(", "));
 

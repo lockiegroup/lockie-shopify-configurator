@@ -385,12 +385,56 @@ const CONFIG_BKS = {
   },
 };
 
+// Customisable Gift Aid Envelopes (LP). Different shape from every boxed-set
+// product: priced per envelope at much larger quantities (min 100, up to
+// 10000+), no numbering/holydays/specials at all, no stock verse/design
+// lists, and one new field — the Gift Aid Yes/No declaration — that didn't
+// exist in the schema before this product (see CLAUDE.md's LP scoping/build
+// notes). uploads_enabled stays true only for the Design step's own
+// allow_upload gate; verses/designs are seeded as empty arrays (not
+// VERSE_CATALOGUE/DESIGN_CATALOGUE) so the "Select a popular verse/design"
+// modes never appear, matching the live product having no such list.
+const PRICE_TABLE_LP = JSON.parse(readFileSync(resolve(ROOT, "price-table-lp.json"), "utf8"));
+const ADDON_FEES_LP = JSON.parse(readFileSync(resolve(ROOT, "addon-fees-lp.json"), "utf8"));
+
+const CONFIG_LP = {
+  min_quantity: 100,
+  uploads_enabled: true,
+  steps: {
+    options: {
+      enabled: true,
+      envelope_colour: { values: ["Blue", "Yellow", "Green", "Manilla", "White"], locked: false },
+      text_colour:     { values: ["Black"], locked: true },
+    },
+    headings: {
+      enabled: true,
+      lines: ["Church/Charity Name", "Church District", "Church Diocese", "Registered Charity No."],
+    },
+    gift_aid: {
+      enabled: true,
+      values: ["Yes", "No"],
+    },
+    design: {
+      enabled: true,
+      title: "Upload Image",
+      hint: "Upload your own image, or use the one from a previous order.",
+      verse:  { enabled: false },
+      design: { enabled: true, allow_upload: true },
+    },
+    numbering:  { enabled: false },
+    holydays:   { enabled: false },
+    start_date: { enabled: false },
+    notes:      { enabled: false },
+  },
+};
+
 const PRODUCTS = [
   { title: "Weekly Boxed Sets",           priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
   { title: "Economy Boxed Sets",          priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
   { title: "Large Weekly Boxed Sets",     priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
   { title: "Monthly Envelope Boxed Sets", priceTable: PRICE_TABLE_MES,     addonFees: ADDON_FEES_MES,     config: CONFIG_MES,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
   { title: "Booklet Envelope Sets",       priceTable: PRICE_TABLE_BKS,     addonFees: ADDON_FEES_BKS,     config: CONFIG_BKS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Customisable Gift Aid Envelopes", priceTable: PRICE_TABLE_LP,  addonFees: ADDON_FEES_LP,      config: CONFIG_LP,      verses: [],              designs: [],               chartUrls: {} },
 ];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────

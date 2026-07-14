@@ -27,5 +27,10 @@
   { "name": "BKS base qty 25 (bottom of first band, matches 2025 catalogue break)", "tier": "bks", "qty": 25, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 62.10 },
   { "name": "BKS mid-band qty 62 (below the 65 break, uses the 60 break's rate)", "tier": "bks", "qty": 62, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 111.21 },
   { "name": "BKS open-ended last band qty 300", "tier": "bks", "qty": 300, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 447.51 },
-  { "name": "BKS qty 62 + special numbering + 2 specials", "tier": "bks", "qty": 62, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 129.41 }
+  { "name": "BKS qty 62 + special numbering + 2 specials", "tier": "bks", "qty": 62, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 129.41 },
+
+  { "name": "LP base qty 100 (bottom of first band, matches catalogue break exactly)", "tier": "lp", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 49.49 },
+  { "name": "LP mid-band qty 1500 (below the 2000 break, uses the 1000 break's rate)", "tier": "lp", "qty": 1500, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 100.05 },
+  { "name": "LP exact breakpoint qty 5000 (matches catalogue break exactly)", "tier": "lp", "qty": 5000, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 193.88 },
+  { "name": "LP open-ended last band qty 12000 (above the 10000 break)", "tier": "lp", "qty": 12000, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 444.67 }
 ]

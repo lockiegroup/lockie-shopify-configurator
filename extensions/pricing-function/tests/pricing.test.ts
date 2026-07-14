@@ -6,11 +6,13 @@ import economyPriceTableJson from "../../../price-table-economy.json";
 import lbsPriceTableJson from "../../../price-table-lbs.json";
 import mesPriceTableJson from "../../../price-table-mes.json";
 import bksPriceTableJson from "../../../price-table-bks.json";
+import lpPriceTableJson from "../../../price-table-lp.json";
 import weeklyAddonFeesJson from "../../../addon-fees-weekly.json";
 import economyAddonFeesJson from "../../../addon-fees-economy.json";
 import lbsAddonFeesJson from "../../../addon-fees-lbs.json";
 import mesAddonFeesJson from "../../../addon-fees-mes.json";
 import bksAddonFeesJson from "../../../addon-fees-bks.json";
+import lpAddonFeesJson from "../../../addon-fees-lp.json";
 import fixtures from "../../../pricing-fixtures.json";
 
 const WEEKLY_PRICE_TABLE = weeklyPriceTableJson as PriceTable;
@@ -18,11 +20,13 @@ const ECONOMY_PRICE_TABLE = economyPriceTableJson as PriceTable;
 const LBS_PRICE_TABLE = lbsPriceTableJson as PriceTable;
 const MES_PRICE_TABLE = mesPriceTableJson as PriceTable;
 const BKS_PRICE_TABLE = bksPriceTableJson as PriceTable;
+const LP_PRICE_TABLE = lpPriceTableJson as PriceTable;
 const WEEKLY_ADDON_FEES = weeklyAddonFeesJson as AddonFees;
 const ECONOMY_ADDON_FEES = economyAddonFeesJson as AddonFees;
 const LBS_ADDON_FEES = lbsAddonFeesJson as AddonFees;
 const MES_ADDON_FEES = mesAddonFeesJson as AddonFees;
 const BKS_ADDON_FEES = bksAddonFeesJson as AddonFees;
+const LP_ADDON_FEES = lpAddonFeesJson as AddonFees;
 
 const TABLES_BY_TIER: Record<string, { priceTable: PriceTable; addonFees: AddonFees }> = {
   weekly: { priceTable: WEEKLY_PRICE_TABLE, addonFees: WEEKLY_ADDON_FEES },
@@ -30,6 +34,7 @@ const TABLES_BY_TIER: Record<string, { priceTable: PriceTable; addonFees: AddonF
   lbs: { priceTable: LBS_PRICE_TABLE, addonFees: LBS_ADDON_FEES },
   mes: { priceTable: MES_PRICE_TABLE, addonFees: MES_ADDON_FEES },
   bks: { priceTable: BKS_PRICE_TABLE, addonFees: BKS_ADDON_FEES },
+  lp: { priceTable: LP_PRICE_TABLE, addonFees: LP_ADDON_FEES },
 };
 
 // These fixtures are the single source of truth for expected totals, shared

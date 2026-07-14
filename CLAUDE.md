@@ -135,13 +135,14 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    for both tiers.
 9. Build the remaining Tier 2/3 configurator products (LBS, MES, BKS as
    config, same pattern as Economy; assess LP separately — see "Product
-   catalogue classification" below). ✅ **DONE for LBS/MES/BKS** — see "LBS
-   spike — proven" / "MES spike — proven" / "BKS spike — proven" below. LP
-   (Customisable Gift Aid Envelopes) is the only configurator product left,
-   and it's a different shape (see "Product catalogue classification") — not
-   a drop-in like these three. Full wizard-UI end-to-end (not just the AJAX
-   spike) is still outstanding for all three, same as Weekly/Economy's own
-   step 7/8 pass.
+   catalogue classification" below). ✅ **DONE — all six configurator
+   products (BS, EBS, LBS, MES, BKS, LP) are built and AJAX-spike-proven** —
+   see "LBS spike — proven" / "MES spike — proven" / "BKS spike — proven" /
+   "LP spike — proven" below. LP needed real (small, contained) code changes,
+   not just config — see its section for exactly what and why. Full
+   wizard-UI end-to-end (not just the AJAX spike) is still outstanding for
+   LBS/MES/BKS/LP, same as Weekly/Economy's own step 7/8 pass — this is the
+   only work left before Matrixify (step 10) can start in earnest.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -358,16 +359,71 @@ Confirmed live on the dev store, same AJAX-only method as LBS/MES — new
   `DRAFT`, had to be set Active + Online Store by hand before `/cart/add.js`
   worked.
 
-**All three remaining boxed-set configurators (LBS, MES, BKS) are now
-proven config-only builds, zero code changes** — Build Order step 9 is
-complete for them. LP (Customisable Gift Aid Envelopes) is the only
-configurator product left before the Matrixify migration (step 10) can
-start in earnest, and per "Product catalogue classification" below it's a
-different shape (envelope colour, Gift Aid declaration print option, church
-name/charity fields, image upload) — needs its own assessment against the
-wizard's step types before assuming it's a drop-in like these three were.
-Full wizard-UI end-to-end (not just the AJAX spike) also remains outstanding
-for LBS/MES/BKS, same as Weekly/Economy's own step 7/8 pass.
+The three boxed-set configurators above (LBS, MES, BKS) are proven
+config-only builds, zero code changes. LP (below) needed real code — the
+first configurator product to do so since Weekly's original build.
+
+### LP spike — proven
+
+Confirmed live on the dev store, same AJAX-only method as LBS/MES/BKS — new
+"Customisable Gift Aid Envelopes" product seeded via `scripts/setup-dev-store.mjs`
+(now a sixth entry in `PRODUCTS`) with its own `custom.price_table`/
+`custom.config`, built from the site owner's price-break list (10 breaks,
+100→10000+ envelopes):
+
+- Qty 300 charges **exactly £53.32** at checkout —
+  `round2(0.17773333333×300)=53.32`, matching the site owner's stated
+  catalogue breakpoint (300→53.32) exactly — same deployed `pricing-function`
+  Cart Transform, **zero Function code changes**, sixth product proven
+  generic.
+- **Different shape from every other configurator product, not just
+  different data** — the first configurator product since Weekly's original
+  build to need real code (~50 lines across 5 changes in `configurator.js`),
+  scoped in advance before building (see the LP scoping pass this replaced
+  in "Product catalogue classification" below):
+  1. **New `gift_aid` step type** — a required Yes/No field with its own
+     step/title ("Gift Aid Declaration"), reusing the existing
+     swatch-rendering idiom from the options step rather than inventing a
+     new widget. `buildSteps` gained a `steps.gift_aid` config node;
+     `buildDisplayFields` gained a "Print Gift Aid Declaration?" row.
+  2. **Design step title/hint made config-driven**
+     (`steps.design.title`/`.hint`, falling back to the existing "Image
+     Design & Verse" text for every other product) — needed because LP's
+     Design step has no verse at all, so the old hardcoded title would have
+     been actively wrong copy, not just generically reused.
+  3. **Two latent order-display bugs found and fixed, plus a third caught in
+     the same pass.** `buildDisplayFields`'s "Excluded Numbers" and "Holyday
+     specials" rows bypassed the `push()` empty-value-skip helper — "None"
+     is a meaningful value, not an empty one — and fired unconditionally
+     regardless of whether numbering/holydays existed on the product at all.
+     The same bug was found a third time while tracing this fix: the "Verse"
+     row (`"No verse"` is equally non-empty). All three are now gated on the
+     relevant step's own `enabled` flag. Invisible until LP because every
+     prior product has numbering/holydays/verse all enabled — regression-
+     tested against Weekly (still £163.32, all three rows still present and
+     byte-for-byte unchanged) to confirm the fix is a no-op for existing
+     products.
+- LP is priced **per envelope**, not per boxed set, at much larger
+  quantities (min 100, up to 10000+) — same banded mechanism, bigger
+  numbers. `addon_fees` is `{}` (empty) — confirmed by the site owner LP has
+  no numbering/holyday/specials fees — and `numbering`/`holydays`/
+  `start_date`/`notes` are all disabled in config, the first product to turn
+  off that whole branch entirely. Verified safe before building: `pricing.js`'s
+  `numberingMatch` returns `null` on empty `num_from`/`num_to`, so
+  `hasSpecialNumbering` is `false` and `computeLineTotal` cleanly reduces to
+  `round2(unit_price × qty)` with no special-casing required.
+- 4 new shared fixtures added to `pricing-fixtures.json`, wired into both
+  test suites — all pass (30 Function tests, 37 wizard tests total across
+  all six tiers).
+- Same manual-publish step as LBS/MES/BKS: setup script leaves the product
+  `DRAFT`, had to be set Active + Online Store by hand before `/cart/add.js`
+  worked.
+
+**All six configurator products (BS, EBS, LBS, MES, BKS, LP) are now
+built and proven** — Build Order step 9 is complete. Full wizard-UI
+end-to-end (not just the AJAX spike) remains outstanding for LBS/MES/BKS/LP,
+same as Weekly/Economy's own step 7/8 pass — the only work left before the
+Matrixify migration (step 10) can start in earnest.
 
 ## Hard rules and known gotchas
 
@@ -521,11 +577,15 @@ product import):**
 - BKS — Booklet Envelope Sets — ✅ AJAX spike proven (see "BKS spike —
   proven" above); full wizard-UI end-to-end still pending. Config-only build
   with one shape variation (no box_colour), confirmed zero code changes.
-- LP — Customisable Gift Aid Envelopes — ⬜ not built, **different shape**
-  from the boxed-set products: envelope colour, a Gift Aid declaration print
-  option, church name/charity fields, image upload. Needs its own assessment
-  against the existing wizard config schema before assuming it's a drop-in
-  like LBS/MES/BKS — may need new step types, not just new metafield values.
+- LP — Customisable Gift Aid Envelopes — ✅ AJAX spike proven (see "LP spike
+  — proven" above); full wizard-UI end-to-end still pending. The one shape
+  difference flagged during scoping (the Gift Aid declaration print option)
+  turned out to be a simple required Yes/No field — confirmed by the site
+  owner as Option 1 of the three candidates considered — and needed a small,
+  contained set of code changes (new `gift_aid` step type, config-driven
+  Design step title, and a latent order-display bug fix) rather than being a
+  drop-in like LBS/MES/BKS. See "LP spike — proven" for exactly what changed
+  and why.
 
 **Standard products (Tier 1 — migrate normally via Matrixify, no config
 build):** SBS, MHS, MASS, STOCKSP, LLP, LSC, PGA, ULP, SMP, STOCKMP,
@@ -578,9 +638,10 @@ Shopify equivalent.
 Shopify path. Tier 1 product URLs → the newly-imported product's handle.
 Tier 2/3 product URLs → the wizard product's handle — requires BS, EBS, LBS,
 MES, BKS, and LP to all exist as built config-driven products first (Build
-Order step 9), not just Weekly/Economy. Category/shop pages → matching
-Shopify collection. Discontinued/orphaned products → nearest sensible target
-(parent collection or homepage), never a bare 404.
+Order step 9) — **✅ now satisfied, all six exist** (see "Product catalogue
+classification" above). Category/shop pages → matching Shopify collection.
+Discontinued/orphaned products → nearest sensible target (parent collection
+or homepage), never a bare 404.
 
 **Stage E — Rehearsal, then cutover.** Dry-run the full import (products,
 customers, orders, redirects) against the real production store once it
