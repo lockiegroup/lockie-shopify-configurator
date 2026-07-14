@@ -135,8 +135,13 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    for both tiers.
 9. Build the remaining Tier 2/3 configurator products (LBS, MES, BKS as
    config, same pattern as Economy; assess LP separately — see "Product
-   catalogue classification" below). 🔶 **IN PROGRESS** — LBS and MES done
-   (see "LBS spike — proven" / "MES spike — proven" below); BKS not started.
+   catalogue classification" below). ✅ **DONE for LBS/MES/BKS** — see "LBS
+   spike — proven" / "MES spike — proven" / "BKS spike — proven" below. LP
+   (Customisable Gift Aid Envelopes) is the only configurator product left,
+   and it's a different shape (see "Product catalogue classification") — not
+   a drop-in like these three. Full wizard-UI end-to-end (not just the AJAX
+   spike) is still outstanding for all three, same as Weekly/Economy's own
+   step 7/8 pass.
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -313,6 +318,57 @@ fourth entry in `PRODUCTS`) with its own `custom.price_table`/
 Remaining for MES: full wizard-UI end-to-end, same as LBS. BKS is next —
 same pattern, awaiting its own price/config data from the site owner.
 
+### BKS spike — proven
+
+Confirmed live on the dev store, same AJAX-only method as LBS/MES — new
+"Booklet Envelope Sets" product seeded via `scripts/setup-dev-store.mjs`
+(now a fifth entry in `PRODUCTS`) with its own `custom.price_table`/
+`custom.config`, built from the site owner's 2025 catalogue price-break list
+(28 breaks, 25→300+ sets):
+
+- Qty 62 + special numbering + 2 specials (Christmas, Easter) charges
+  **exactly £129.41** at checkout — `round2(1.79366666667×62)=111.21 +
+  12.00 + 0.05×2×62=6.20` — same deployed `pricing-function` Cart Transform,
+  zero code changes, fifth product proven generic.
+- Same break→rate derivation as LBS/MES (`unit = break_total ÷ break_qty`,
+  11dp, all 28 breakpoints round-trip to the exact penny), open-ended last
+  band above the 300-set break (`to: 999999`).
+- **Shape variation, not just data**: a booklet has no box, so `box_colour`
+  is omitted from `CONFIG_BKS.steps.options` entirely (not locked to a
+  single value like Economy's colours — genuinely absent). Confirmed via
+  reading `configurator.js` before building this that the wizard already
+  handles a missing option key cleanly: `renderOptions`'s field loop does
+  `if (!opt) return;` per field, the options-step validator only checks
+  `opts.box_colour` when that key exists, and `buildDisplayFields`'s `push()`
+  helper skips null/undefined values — so "Box Colour" simply never appears
+  as a rendered field, a validation requirement, or an order row. **Zero
+  code changes** — the first real proof that the config schema's optionality
+  (not just its values) is genuinely data-driven, not merely a convenient
+  coincidence of the three products before it always having all three
+  colour options.
+- `min_quantity: 25`, envelope colour Blue/Yellow/Green/Pink/White — Weekly
+  colours differ as expected. `addon_fees` and `holydays.max: 60` confirmed
+  by the site owner to match Weekly exactly, same as LBS/MES — the catalogue
+  independently confirms the same £12 special-numbering charge and notes
+  booklet supports numbering range + exclusions + non-sequential numbering.
+- 4 new shared fixtures added to `pricing-fixtures.json`, wired into both
+  test suites — all pass (26 Function tests, 33 wizard tests total across
+  all five tiers).
+- Same manual-publish step as LBS/MES: setup script leaves the product
+  `DRAFT`, had to be set Active + Online Store by hand before `/cart/add.js`
+  worked.
+
+**All three remaining boxed-set configurators (LBS, MES, BKS) are now
+proven config-only builds, zero code changes** — Build Order step 9 is
+complete for them. LP (Customisable Gift Aid Envelopes) is the only
+configurator product left before the Matrixify migration (step 10) can
+start in earnest, and per "Product catalogue classification" below it's a
+different shape (envelope colour, Gift Aid declaration print option, church
+name/charity fields, image upload) — needs its own assessment against the
+wizard's step types before assuming it's a drop-in like these three were.
+Full wizard-UI end-to-end (not just the AJAX spike) also remains outstanding
+for LBS/MES/BKS, same as Weekly/Economy's own step 7/8 pass.
+
 ## Hard rules and known gotchas
 
 - **Never trust the client price.** The Cart Transform Function recomputes from
@@ -462,7 +518,9 @@ product import):**
   config-only build, same shape as Weekly, no new code.
 - MES — Monthly Envelope Boxed Sets — ✅ AJAX spike proven (see "MES spike —
   proven" above); full wizard-UI end-to-end still pending.
-- BKS — Booklet Envelope Sets — ⬜ not built. Boxed-set type.
+- BKS — Booklet Envelope Sets — ✅ AJAX spike proven (see "BKS spike —
+  proven" above); full wizard-UI end-to-end still pending. Config-only build
+  with one shape variation (no box_colour), confirmed zero code changes.
 - LP — Customisable Gift Aid Envelopes — ⬜ not built, **different shape**
   from the boxed-set products: envelope colour, a Gift Aid declaration print
   option, church name/charity fields, image upload. Needs its own assessment

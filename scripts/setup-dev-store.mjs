@@ -336,11 +336,61 @@ const CONFIG_MES = {
   },
 };
 
+// Tier 2 — Booklet Envelope Sets (BKS). Same full shape as Weekly (uploads
+// on, custom verse/design allowed, holydays.max 60, addon fees confirmed by
+// the site owner to match Weekly exactly — the catalogue independently
+// confirms the same £12 special-numbering charge and notes booklet supports
+// numbering range + exclusions + non-sequential numbering, same as Weekly).
+// The one real shape difference: a booklet has no box, so `box_colour` is
+// omitted from the options step entirely rather than locked to a single
+// value — the wizard's render loop and validator both already skip an
+// absent option key cleanly (`if (!opt) return;` in renderOptions, and the
+// box_colour validation check is itself conditional on `opts.box_colour`
+// existing), so this needed zero code changes, just a metafield with one
+// fewer key. See CLAUDE.md "BKS spike — proven" for the verification.
+const PRICE_TABLE_BKS = JSON.parse(
+  readFileSync(resolve(ROOT, "price-table-bks.json"), "utf8")
+);
+
+const ADDON_FEES_BKS = JSON.parse(
+  readFileSync(resolve(ROOT, "addon-fees-bks.json"), "utf8")
+);
+
+const CONFIG_BKS = {
+  min_quantity: 25,
+  uploads_enabled: true,
+  steps: {
+    options: {
+      enabled: true,
+      envelope_colour: { values: ["Blue", "Yellow", "Green", "Pink", "White"], locked: false },
+      text_colour:     { values: ["Black"], locked: true },
+    },
+    headings: {
+      enabled: true,
+      lines: ["Church/Charity Name", "Church District", "Church Diocese", "Registered Charity No."],
+    },
+    design: {
+      enabled: true,
+      verse:  { enabled: true, allow_custom: true },
+      design: { enabled: true, allow_upload: true },
+    },
+    numbering: {
+      enabled: true,
+      special_numbering_fee_key: "special_numbering",
+      specials: ["Christmas", "Easter", "Easter (2)", "Harvest", "Gift Day", "Initial Offering"],
+    },
+    holydays:   { enabled: true, max: 60 },
+    start_date: { enabled: true, weekday_only: "Sunday" },
+    notes:      { enabled: true },
+  },
+};
+
 const PRODUCTS = [
-  { title: "Weekly Boxed Sets",         priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Economy Boxed Sets",        priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Large Weekly Boxed Sets",   priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
-  { title: "Monthly Envelope Boxed Sets", priceTable: PRICE_TABLE_MES,   addonFees: ADDON_FEES_MES,     config: CONFIG_MES,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Weekly Boxed Sets",           priceTable: PRICE_TABLE_WEEKLY,  addonFees: ADDON_FEES_WEEKLY,  config: CONFIG_WEEKLY,  verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Economy Boxed Sets",          priceTable: PRICE_TABLE_ECONOMY, addonFees: ADDON_FEES_ECONOMY, config: CONFIG_ECONOMY, verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Large Weekly Boxed Sets",     priceTable: PRICE_TABLE_LBS,     addonFees: ADDON_FEES_LBS,     config: CONFIG_LBS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Monthly Envelope Boxed Sets", priceTable: PRICE_TABLE_MES,     addonFees: ADDON_FEES_MES,     config: CONFIG_MES,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
+  { title: "Booklet Envelope Sets",       priceTable: PRICE_TABLE_BKS,     addonFees: ADDON_FEES_BKS,     config: CONFIG_BKS,     verses: VERSE_CATALOGUE, designs: DESIGN_CATALOGUE, chartUrls: CHART_URLS },
 ];
 
 // ── Step 1: Metafield definitions ─────────────────────────────────────────────

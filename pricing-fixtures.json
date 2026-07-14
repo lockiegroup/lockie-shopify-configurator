@@ -22,5 +22,10 @@
   { "name": "MES base qty 25 (bottom of first band, matches 2025 catalogue break)", "tier": "mes", "qty": 25, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 46.90 },
   { "name": "MES mid-band qty 60 (below the 75 break, uses the 50 break's rate)", "tier": "mes", "qty": 60, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 97.64 },
   { "name": "MES open-ended last band qty 100", "tier": "mes", "qty": 100, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 150.33 },
-  { "name": "MES qty 60 + special numbering + 2 specials", "tier": "mes", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 115.64 }
+  { "name": "MES qty 60 + special numbering + 2 specials", "tier": "mes", "qty": 60, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 115.64 },
+
+  { "name": "BKS base qty 25 (bottom of first band, matches 2025 catalogue break)", "tier": "bks", "qty": 25, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 62.10 },
+  { "name": "BKS mid-band qty 62 (below the 65 break, uses the 60 break's rate)", "tier": "bks", "qty": 62, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 111.21 },
+  { "name": "BKS open-ended last band qty 300", "tier": "bks", "qty": 300, "specialNumbering": false, "specialsCount": 0, "holyDaysCount": 0, "expectedTotal": 447.51 },
+  { "name": "BKS qty 62 + special numbering + 2 specials", "tier": "bks", "qty": 62, "specialNumbering": true, "specialsCount": 2, "holyDaysCount": 0, "expectedTotal": 129.41 }
 ]
