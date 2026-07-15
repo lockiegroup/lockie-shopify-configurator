@@ -139,20 +139,81 @@ price → Tier 2/3 wizard. Otherwise → Tier 1 native variant.
    products (BS, EBS, LBS, MES, BKS, LP) are built and AJAX-spike-proven** —
    see "LBS spike — proven" / "MES spike — proven" / "BKS spike — proven" /
    "LP spike — proven" below. LP needed real (small, contained) code changes,
-   not just config — see its section for exactly what and why. Full
-   wizard-UI end-to-end (not just the AJAX spike) is still outstanding for
-   LBS/MES/BKS/LP, same as Weekly/Economy's own step 7/8 pass.
-   🔶 **IN PROGRESS** — LBS's wizard-UI pass started 2026-07-14 and is
-   **paused mid-flow** (Step 1 and Step 2 confirmed working, Step 3 "Image
-   Design & Verse" not yet reached) after it surfaced two real,
-   launch-blocking bugs unrelated to LBS's own config — see "Wizard-UI pass
-   findings — qty-dropdown hang and native-form pricing bypass" below. Both
-   fixes are now **confirmed working** (native form gone on both LBS and BS,
-   confirmed via screenshot of the live storefront; the LBS qty-60 AJAX
-   add-to-cart still prices exactly right with `blockOnFailure:true` —
-   `/cart.js` showed `line_price: 23697`, i.e. £236.97, matching the known-
-   good spike value exactly) — the LBS pass can resume at Step 3 next
-   session. MES/BKS/LP still need their own wizard-UI passes afterward.
+   not just config — see its section for exactly what and why.
+   ✅ **DONE — full wizard-UI end-to-end (not just the AJAX spike) is now
+   also complete for all four of LBS/MES/BKS/LP**, same standard as
+   Weekly/Economy's own step 7/8 pass. All six configurator products (BS,
+   EBS, LBS, MES, BKS, LP) are proven both by AJAX spike and by the real
+   wizard UI, with real paid test orders for every one. Pass-by-pass detail
+   below.
+   LBS's wizard-UI pass (started 2026-07-14, paused
+   mid-flow after surfacing the qty-dropdown-hang and native-form pricing
+   bypass bugs — see "Wizard-UI pass findings" below) resumed and **finished
+   2026-07-15: ✅ DONE.** Full 7-step walkthrough (Options → Headings →
+   Design & Verse → Numbering → Holydays → Start Date → Notes), real paid
+   test order **#H0V384RIG**, charged exactly **£236.97** — matching the
+   AJAX spike and the post-fix bug-confirmation value to the penny. LBS is
+   now proven end-to-end through the real UI, same standard as
+   Weekly/Economy's own step 7/8 pass.
+   During this pass, a small UX improvement was made (not a bug fix): the
+   Numbering step's "Numbered from"/"Numbered to" fields now default to
+   `1`/current quantity on render (`renderNumbering` in `configurator.js`),
+   so a customer wanting a plain 1-to-qty range doesn't have to type
+   anything. Gated by `num_from_touched`/`num_to_touched` state flags that
+   flip true on manual edit, so it stops overwriting once the customer types
+   — and re-derives "to" from `state.qty` on every render, so it stays
+   correct if they go back to Step 1 and change quantity before returning.
+   Centralized in the one shared `renderNumbering` function used by every
+   product with `numbering.enabled` — not a per-product change. Landed
+   mid-LBS-run without disturbing that session's in-progress state (a static
+   asset edit, not a live-state mutation), so LBS's own pass verified the
+   *existing* numbering behaviour only.
+   MES's wizard-UI pass (2026-07-15) is **✅ DONE** — same full 7-step
+   walkthrough, real paid test order **#DXZ5VPNAG**, charged exactly
+   **£103.64**. This was also the first fresh page load since the numbering-
+   defaults change above landed: **confirmed working live** — "Numbered
+   from"/"Numbered to" pre-filled `1`/`60` with no typing needed, before any
+   exclusion values were entered. The defaults are no longer an open item.
+   BKS's wizard-UI pass (2026-07-15) is **✅ DONE** — same full 7-step
+   walkthrough, real paid test order **#CD2FVLF42**, charged exactly
+   **£113.62**.
+   LP's wizard-UI pass (2026-07-15) is **✅ DONE** — real paid test order
+   **#J1PPHAPUD**, charged exactly **£53.32**, at LP's real 4-step flow
+   (Options → Headings → Gift Aid Declaration → Upload Image, no
+   numbering/holydays/start date/notes). Two real UX/labelling issues were
+   found and fixed during this pass, both scoped and shipped before
+   continuing:
+   - **Qty dropdown → number input for LP.** LP's real catalogue range
+     (100 → 10000+) doesn't fit a `<select>` at all — flagged when the
+     original qty-dropdown-hang fix went in (see "Wizard-UI pass findings"
+     below), deliberately deferred rather than bundled into that fix.
+     Resolved as a config-driven widget choice: `steps.options.qty_input:
+     "number"` in `CONFIG_LP` switches `renderOptions` to a plain
+     `<input type="number" min="{min_quantity}">` instead of the dropdown,
+     wired to `input` (not `change`) for live pricing. Every other product
+     omits the field and keeps the existing capped dropdown untouched. The
+     options-step validator gained a matching min-quantity check that only
+     applies when `qty_input === "number"` (the dropdown never needed one).
+     Tested live at qty 300 — a realistic large order, not the catalogue's
+     synthetic 10000+ ceiling.
+   - **Hardcoded "sets" → config-driven `unit_noun`.** LP prices individual
+     envelopes, not boxed sets, but Step 1's hint, minimum-order note, and
+     all three price-summary lines said "sets" regardless of product —
+     found by inspection on LP's first fresh load. Fixed the same way as
+     the Design step's config-driven title/hint (LP's original build): 7
+     call sites in `configurator.js` now read `config.unit_noun || "sets"`
+     instead of a literal string; `CONFIG_LP` gets `unit_noun: "envelopes"`,
+     every other product falls through to the existing default unchanged.
+     Confirmed working live after a real propagation-lag detour — see
+     the new Hard rules entries on deploying theme-extension JS changes and
+     on the "deploy succeeded" vs "asset is live" propagation gap, both
+     added 2026-07-15 from tracing this exact case end-to-end (bundle
+     content confirmed correct, version confirmed active, purely a rollout
+     delay, resolved on its own within the documented window).
+   **All six configurator products are now fully proven end-to-end through
+   the real wizard UI** — this closes out the wizard-UI testing effort that
+   build order step 9 called for. Remaining outstanding work is Matrixify
+   migration (step 10, below) and the items under "Launch checklist".
 10. Catalogue / customer / order migration (Matrixify) + 301 redirects run separately.
 
 ### Cart Transform spike — proven
@@ -550,6 +611,38 @@ Two unrelated bugs found and fixed along the way, both worth remembering:
 
 ## Hard rules and known gotchas
 
+- **Theme-extension JS edits need an explicit `shopify app deploy` to reach the
+  live storefront — there is no live-reload without an active `shopify app dev`
+  tunnel.** Found 2026-07-15: the live theme (`test-data`) loads
+  `configurator.js`/`pricing.js` from the currently **released app version**,
+  not local disk. Editing the file and re-running `scripts/setup-dev-store.mjs`
+  (which only writes metafields, not extension assets) is not enough — a hard
+  refresh will keep showing the old JS indefinitely. Confirmed no dev tunnel
+  was running this session (checked running `node` processes — only the app's
+  own `react-router dev` backend and the Shopify MCP helper were up, no CLI
+  tunnel process). Fix: `shopify app deploy --config lockie-configurator-v2
+  --allow-updates` (non-interactive; add `--message "..."` to label the
+  version). Metafield-only changes (config/price_table/addon_fees JSON) don't
+  need this — those go live the moment `setup-dev-store.mjs` writes them,
+  since the Function and wizard read metafields at runtime, not at deploy
+  time. Only `configurator.js`/`pricing.js`/liquid template edits need a
+  deploy. If a JS fix "isn't showing up live" after a hard refresh, check for
+  a running dev tunnel and/or just deploy before re-diagnosing further.
+- **After `shopify app deploy` releases a new version, allow several minutes
+  for it to actually propagate to the storefront — "deploy succeeded" and
+  "asset is live" are not the same moment.** Confirmed 2026-07-15 straight
+  from Shopify's own theme-app-extensions docs: "Releasing an app version
+  replaces the current active version that's served to stores that have your
+  app installed. It might take several minutes for app users to be upgraded
+  to the new version." Traced a real case where `shopify app versions list`
+  showed the new version `status: "active"` and the deploy-bundle on disk was
+  byte-identical to the edited source, yet the live Network response for
+  `configurator.js` still had zero matches for the new code shortly after —
+  every on-our-side checkpoint (source, bundle, active-version status) was
+  correct; it was purely the documented rollout lag. Don't re-diagnose or
+  redeploy on a hunch if a change doesn't show up within the first few
+  minutes — re-check after a longer wait first. Only escalate if it's still
+  missing well past that window (order of 20+ minutes).
 - **Never trust the client price.** The Cart Transform Function recomputes from
   metafields. The front end's `_calc_line_total` is for audit only.
 - **Use `lineExpand` for pricing, not `lineUpdate`.** `lineUpdate` is restricted to
@@ -716,6 +809,13 @@ on the dev store, don't investigate early:
   is already GBP (orders #1001/#1002 charged in £ exactly, per "Stage 3 —
   proven" above) — this is just making sure the real production store,
   which doesn't exist yet, is created with the same setting.
+- **Shipping is not configured on the dev store.** Flagged 2026-07-15
+  during the MES/BKS wizard-UI passes — every test order so far
+  (#1001-#1003, #1002, #H0V384RIG, #DXZ5VPNAG) has been a single
+  configured-product checkout with no shipping rates set up, so this has
+  never blocked a test. Needs real shipping zones/rates before go-live, but
+  is store-configuration, not app code — nothing to fix mid-test, just
+  don't forget it before cutover (see Stage E rehearsal).
 
 ## Product catalogue classification
 
@@ -727,15 +827,19 @@ product import):**
 - BS — Weekly ✅ built
 - EBS — Economy ✅ built
 - LBS — Large Weekly Boxed Sets — ✅ AJAX spike proven (see "LBS spike —
-  proven" above); full wizard-UI end-to-end still pending. Confirmed a
-  config-only build, same shape as Weekly, no new code.
+  proven" above) and ✅ full wizard-UI end-to-end proven (order #H0V384RIG,
+  £236.97 — see build order step 9). Confirmed a config-only build, same
+  shape as Weekly, no new code.
 - MES — Monthly Envelope Boxed Sets — ✅ AJAX spike proven (see "MES spike —
-  proven" above); full wizard-UI end-to-end still pending.
+  proven" above) and ✅ full wizard-UI end-to-end proven (order #DXZ5VPNAG,
+  £103.64).
 - BKS — Booklet Envelope Sets — ✅ AJAX spike proven (see "BKS spike —
-  proven" above); full wizard-UI end-to-end still pending. Config-only build
-  with one shape variation (no box_colour), confirmed zero code changes.
+  proven" above) and ✅ full wizard-UI end-to-end proven (order #CD2FVLF42,
+  £113.62). Config-only build with one shape variation (no box_colour),
+  confirmed zero code changes.
 - LP — Customisable Gift Aid Envelopes — ✅ AJAX spike proven (see "LP spike
-  — proven" above); full wizard-UI end-to-end still pending. The one shape
+  — proven" above) and ✅ full wizard-UI end-to-end proven (order
+  #J1PPHAPUD, £53.32). The one shape
   difference flagged during scoping (the Gift Aid declaration print option)
   turned out to be a simple required Yes/No field — confirmed by the site
   owner as Option 1 of the three candidates considered — and needed a small,

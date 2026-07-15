@@ -302,10 +302,17 @@
       defs.push({
         key: "options",
         title: "Quantity & Options",
-        hint: "Choose how many sets and your envelope, ink and box options.",
+        hint: "Choose how many " + (config.unit_noun || "sets") + " and your envelope, ink and box options.",
         render: renderOptions,
         validate: function (ctx) {
           var opts = ctx.config.steps.options;
+          if (opts.qty_input === "number") {
+            var minQty = ctx.config.min_quantity || 1;
+            var qty = +ctx.state.qty;
+            if (!ctx.state.qty || isNaN(qty) || qty < minQty) {
+              return "Please enter a quantity of at least " + minQty + ".";
+            }
+          }
           if (opts.box_colour && !opts.box_colour.locked && !ctx.state.box_colour) {
             return "Please choose a box colour.";
           }
@@ -415,7 +422,7 @@
       defs.push({
         key: "start_date",
         title: "Start Date",
-        hint: "Select the " + (steps.start_date.weekday_only || "") + " your envelope sets should begin.",
+        hint: "Select the " + (steps.start_date.weekday_only || "") + " your envelope " + (config.unit_noun || "sets") + " should begin.",
         render: renderStart,
         validate: function (ctx) {
           var s = ctx.state;
@@ -455,18 +462,31 @@
     var config = ctx.config;
     var state = ctx.state;
     var minQty = config.min_quantity || 1;
-    var maxQty = maxQtyFromPriceTable(ctx.priceTable, minQty, minQty + 280);
 
-    var qtyOpts = "";
-    for (var q = minQty; q <= maxQty; q++) {
-      qtyOpts += '<option value="' + q + '"' + (q === state.qty ? " selected" : "") + ">" + q + "</option>";
+    // Products with a catalogue-real range far beyond what's sane to render
+    // as a <select> (e.g. LP's 100-to-10000+) declare `qty_input: "number"`
+    // in config and get a plain number input instead — same underlying
+    // state.qty, just a different widget. Everything else keeps the
+    // dropdown, capped by maxQtyFromPriceTable as before.
+    var useNumberInput = config.steps.options.qty_input === "number";
+
+    var qtyFieldHtml;
+    if (useNumberInput) {
+      qtyFieldHtml = '<input type="number" id="lc-qty" min="' + minQty + '" step="1" value="' + escapeHtml(state.qty) + '">';
+    } else {
+      var maxQty = maxQtyFromPriceTable(ctx.priceTable, minQty, minQty + 280);
+      var qtyOpts = "";
+      for (var q = minQty; q <= maxQty; q++) {
+        qtyOpts += '<option value="' + q + '"' + (q === state.qty ? " selected" : "") + ">" + q + "</option>";
+      }
+      qtyFieldHtml = '<select id="lc-qty">' + qtyOpts + "</select>";
     }
 
     var html =
       '<div class="lockie-configurator__field">' +
       '<label class="lockie-configurator__label">Quantity <span class="lockie-configurator__req">*</span></label>' +
-      '<select id="lc-qty">' + qtyOpts + "</select>" +
-      '<div class="lockie-configurator__note">Minimum order ' + minQty + " sets.</div>" +
+      qtyFieldHtml +
+      '<div class="lockie-configurator__note">Minimum order ' + minQty + " " + (config.unit_noun || "sets") + ".</div>" +
       "</div>";
     el.innerHTML = html;
 
@@ -512,7 +532,7 @@
       el.appendChild(wrap);
     });
 
-    el.querySelector("#lc-qty").addEventListener("change", function (e) {
+    el.querySelector("#lc-qty").addEventListener(useNumberInput ? "input" : "change", function (e) {
       state.qty = +e.target.value;
       ctx.refresh();
     });
@@ -826,6 +846,17 @@
   function renderNumbering(el, ctx) {
     var config = ctx.config;
     var state = ctx.state;
+
+    // Default "from"/"to" to a straightforward 1-to-quantity range so a
+    // customer who wants exactly that never has to type anything. Only
+    // applies while the fields are untouched, and re-derives "to" from the
+    // current quantity on every render — so going back to Step 1, changing
+    // quantity, then returning here still shows the right default. Once the
+    // customer edits either field directly, it's marked touched and this
+    // stops overwriting it.
+    if (!state.num_from_touched) state.num_from = "1";
+    if (!state.num_to_touched) state.num_to = String(state.qty);
+
     var specials = config.steps.numbering.specials || [];
     var extraEnvelopeFee = ctx.addonFees && ctx.addonFees.extra_envelope;
     var extraEnvelopeLabel =
@@ -895,9 +926,9 @@
     }
 
     var nfrom = el.querySelector("#lc-nfrom");
-    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; updateNumberingUI(); ctx.refresh(); });
+    if (nfrom) nfrom.addEventListener("input", function (e) { state.num_from = e.target.value; state.num_from_touched = true; updateNumberingUI(); ctx.refresh(); });
     var nto = el.querySelector("#lc-nto");
-    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; updateNumberingUI(); ctx.refresh(); });
+    if (nto) nto.addEventListener("input", function (e) { state.num_to = e.target.value; state.num_to_touched = true; updateNumberingUI(); ctx.refresh(); });
     var nexcl = el.querySelector("#lc-nexcl");
     if (nexcl) nexcl.addEventListener("input", function (e) { state.excluded = e.target.value; updateNumberingUI(); ctx.refresh(); });
 
@@ -1062,20 +1093,21 @@
         return;
       }
 
-      var lines = [{ label: qty + " sets × " + unitFormatter.format(unit), amount: Pricing.round2(unit * qty) }];
+      var unitNoun = config.unit_noun || "sets";
+      var lines = [{ label: qty + " " + unitNoun + " × " + unitFormatter.format(unit), amount: Pricing.round2(unit * qty) }];
 
       if (hasSpecialNumbering(state) && addonFees.special_numbering && addonFees.special_numbering.type === "flat") {
         lines.push({ label: addonFees.special_numbering.label || "Special numbering", amount: addonFees.special_numbering.amount });
       }
       if (specialsCount > 0 && addonFees.extra_envelope && addonFees.extra_envelope.type === "per_unit_per_set") {
         lines.push({
-          label: specialsCount + " special env. × " + qty + " sets",
+          label: specialsCount + " special env. × " + qty + " " + unitNoun,
           amount: Pricing.round2(addonFees.extra_envelope.amount * specialsCount * qty),
         });
       }
       if (holyDaysCount > 0 && addonFees.holyday_special && addonFees.holyday_special.type === "per_unit_per_set") {
         lines.push({
-          label: holyDaysCount + " holyday env. × " + qty + " sets",
+          label: holyDaysCount + " holyday env. × " + qty + " " + unitNoun,
           amount: Pricing.round2(addonFees.holyday_special.amount * holyDaysCount * qty),
         });
       }
@@ -1105,7 +1137,7 @@
         })
         .join("");
       totalEl.textContent = totalFormatter.format(total);
-      unitNoteEl.textContent = "Unit price " + unitFormatter.format(unit) + " at " + qty + " sets.";
+      unitNoteEl.textContent = "Unit price " + unitFormatter.format(unit) + " at " + qty + " " + unitNoun + ".";
     }
 
     var state = {
@@ -1128,6 +1160,8 @@
       design_upload_error: "",
       num_from: "",
       num_to: "",
+      num_from_touched: false,
+      num_to_touched: false,
       excluded: "",
       specials: [],
       holydays: 0,

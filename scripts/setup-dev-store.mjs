@@ -407,9 +407,11 @@ const ADDON_FEES_LP = JSON.parse(readFileSync(resolve(ROOT, "addon-fees-lp.json"
 const CONFIG_LP = {
   min_quantity: 100,
   uploads_enabled: true,
+  unit_noun: "envelopes",
   steps: {
     options: {
       enabled: true,
+      qty_input: "number",
       envelope_colour: { values: ["Blue", "Yellow", "Green", "Manilla", "White"], locked: false },
       text_colour:     { values: ["Black"], locked: true },
     },
