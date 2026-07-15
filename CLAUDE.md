@@ -800,22 +800,83 @@ history, fulfilment actions it manually.
 
 Underscore prefix = hidden from customer, visible to fulfilment on the order.
 
+## Production store
+
+Created 2026-07-15: **`lockie-church-2.myshopify.com`**, under the same
+Partner org as the dev store ("Lockie Ltd"). Confirmed at creation: currency
+**GBP**, region **UK**, timezone **Europe/London**, units **metric/kg**. A
+custom domain will be attached later — not yet actionable.
+
+**Seeded and safe to leave as-is:**
+- `node scripts/setup-dev-store.mjs --store lockie-church-2.myshopify.com`
+  ran cleanly — all 6 metafield definitions and all 6 configurator products
+  (BS, EBS, LBS, MES, BKS, LP) created fresh with their full
+  `config`/`price_table`/`addon_fees`/`verses`/`designs`/`chart_urls`
+  metafields, byte-identical source to the dev store's proven config.
+- Confirmed via direct query: all 6 products are **`DRAFT`** status (the
+  setup script never publishes — same behaviour as every dev-store product
+  history has already relied on) and **`cartTransforms(first: 5)` returns
+  zero nodes** — nothing is purchasable, nothing is on any sales channel,
+  no pricing path exists at all yet. This is a genuinely inert, safe state:
+  there is no way for a real customer to reach these products or place an
+  order until the app is installed and the CartTransform is activated, both
+  still outstanding (see below). Nothing further needed here before the
+  next session picks up hosting.
+
+**🔴 BLOCKED — app install needs real hosting first.** Attempted to install
+`lockie-configurator-v2` on the new store via `shopify app dev --store
+lockie-church-2.myshopify.com` (the same method used for the dev store) and
+hit two compounding issues, traced rather than worked around:
+1. **`shopify app dev` refuses non-dev-store domains.** Exact error:
+   *"Could not find store for domain lockie-church-2.myshopify.com in
+   organization Lockie Ltd... Ensure... that the store is a dev store."*
+   `app dev` only targets stores the Partner org has registered as
+   development/test stores — a genuine production store doesn't qualify,
+   by design, regardless of store settings.
+2. **The deeper blocker: `application_url`/`redirect_urls` in
+   `shopify.app.lockie-configurator-v2.toml` are still the scaffold
+   placeholder `https://example.com`/`https://example.com/api/auth` —
+   never replaced with a real hosted backend.** Every install to date (the
+   dev store) only worked because `shopify app dev`'s local Cloudflare
+   tunnel stood in for a real `application_url` during the OAuth handshake.
+   Since #1 means `app dev` can't target this store at all, and there's no
+   other live server at a real URL, a standard OAuth install has nowhere to
+   complete its callback. This is the same gap flagged and deliberately
+   deferred at the uploads decision (Build Order step 6 — "not pursuing
+   without committing to real hosting first"); it's now a hard blocker
+   rather than a deferred nice-to-have, because installing on a real
+   production store is exactly the point where it bites.
+
+**Decision (2026-07-15):** fix this properly — stand up real hosting
+(Fly.io/Render/Railway/a VPS) and update `application_url`/`redirect_urls`
+to a real domain, rather than the workaround of registering
+`lockie-church-2` as a dev/test store in the Partner org just to unblock
+`app dev`'s tunnel (that would leave a live, payment-taking store dependent
+on a developer's machine being online to re-auth — rejected as too fragile
+for production). Deliberately picked up as its **own session** — bigger
+scope (hosting platform choice, cost, deploy pipeline) than fits alongside
+other work. Nothing on the app/CartTransform side should be attempted again
+until that's done; the store itself needs no further action in the
+meantime.
+
 ## Launch checklist
 
-Items that only matter once a real production store exists — not actionable
-on the dev store, don't investigate early:
+Items that only matter once a real production store exists:
 
-- **Confirm the production store is set to GBP at creation.** The dev store
-  is already GBP (orders #1001/#1002 charged in £ exactly, per "Stage 3 —
-  proven" above) — this is just making sure the real production store,
-  which doesn't exist yet, is created with the same setting.
-- **Shipping is not configured on the dev store.** Flagged 2026-07-15
+- ✅ **Production store confirmed GBP.** `lockie-church-2.myshopify.com`
+  created 2026-07-15 with currency GBP, region UK — see "Production store"
+  above. (Dev store was already GBP too — orders #1001/#1002 charged in £
+  exactly, per "Stage 3 — proven" above.)
+- **Shipping is not configured on either store.** Flagged 2026-07-15
   during the MES/BKS wizard-UI passes — every test order so far
-  (#1001-#1003, #1002, #H0V384RIG, #DXZ5VPNAG) has been a single
-  configured-product checkout with no shipping rates set up, so this has
-  never blocked a test. Needs real shipping zones/rates before go-live, but
-  is store-configuration, not app code — nothing to fix mid-test, just
-  don't forget it before cutover (see Stage E rehearsal).
+  (#1001-#1003, #1002, #H0V384RIG, #DXZ5VPNAG, #CD2FVLF42, #J1PPHAPUD) has
+  been a single configured-product checkout with no shipping rates set up,
+  so this has never blocked a test. Needs real shipping zones/rates before
+  go-live, but is store-configuration, not app code — nothing to fix
+  mid-test, just don't forget it before cutover (see Stage E rehearsal).
+- **App install + CartTransform activation on production** — see
+  "Production store" above. Blocked on real hosting, tracked as its own
+  session.
 
 ## Product catalogue classification
 
